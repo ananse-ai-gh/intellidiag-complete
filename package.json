@@ -1,46 +1,33 @@
 {
-  "name": "intellidiag",
+  "name": "intellidiag-frontend",
   "version": "0.1.0",
   "private": true,
-  "dependencies": {
-    "@gsap/react": "^2.1.2",
-    "@testing-library/dom": "^10.4.0",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^13.5.0",
-    "framer-motion": "^12.18.1",
-    "gsap": "^3.13.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-icons": "^5.5.0",
-    "react-router-dom": "^7.6.2",
-    "react-scripts": "5.0.1",
-    "react-scroll": "^1.9.3",
-    "styled-components": "^6.1.19",
-    "web-vitals": "^2.1.4"
-  },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "dev": "next dev -p 8001",
+    "dev:3000": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
+  "dependencies": {
+    "next": "14.0.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@gsap/react": "^2.1.2",
+    "gsap": "^3.13.0",
+    "framer-motion": "^12.18.1",
+    "react-icons": "^5.5.0",
+    "styled-components": "^6.1.19",
+    "axios": "^1.6.2"
   },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
-  }
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "14.0.4"
+  },
+  "keywords": ["medical", "diagnostic", "ai", "healthcare", "nextjs"],
+  "author": "IntelliDiag Team",
+  "license": "MIT"
 }

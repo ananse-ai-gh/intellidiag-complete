@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
-import styled, { css } from "styled-components";
+'use client'
+
+import React, { useState, useEffect } from 'react';
+import styled from 'styled-components';
 
 const Cursor = styled.div`
   position: fixed;
@@ -7,41 +9,26 @@ const Cursor = styled.div`
   left: ${props => props.x}px;
   width: 20px;
   height: 20px;
+  background: ${props => props.$isHovering ? 'rgba(6, 148, 251, 0.8)' : 'rgba(255, 255, 255, 0.8)'};
   border-radius: 50%;
-  background-color: #FFFFFF;
   pointer-events: none;
-  transform: translate(-50%, -50%);
   z-index: 9999;
+  transition: all 0.1s ease;
+  transform: translate(-50%, -50%) scale(${props => props.$isClicking ? 0.8 : 1});
   mix-blend-mode: difference;
-  transition: transform 0.1s ease, width 0.2s ease, height 0.2s ease;
   
-  /* Hide cursor on touch devices */
-  @media (pointer: coarse) {
-    display: none;
-  }
-
-  /* Different cursor states */
-  ${props => props.$isHovering && css`
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
     width: 40px;
     height: 40px;
-    background-color: rgba(255, 255, 255, 0.5);
-  `}
-
-  ${props => props.$isClicking && css`
-    width: 15px;
-    height: 15px;
-    background-color: #21A2FF;
-  `}
-
-  /* Responsive sizing */
-  @media (max-width: 768px) {
-    width: 16px;
-    height: 16px;
-    
-    ${props => props.$isHovering && css`
-      width: 30px;
-      height: 30px;
-    `}
+    background: ${props => props.$isHovering ? 'rgba(6, 148, 251, 0.3)' : 'rgba(255, 255, 255, 0.3)'};
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: all 0.3s ease;
+    scale: ${props => props.$isHovering ? 1.2 : 1};
   }
 `;
 

@@ -1,5 +1,8 @@
+'use client'
+
 import React from "react";
 import { FaBell } from "react-icons/fa";
+import Link from 'next/link';
 
 function Appbar() {
   return (
@@ -25,16 +28,16 @@ function Appbar() {
           justifyContent: "center",
         }}
       >
-        <img
-          style={
-            {
+        <Link href="/">
+          <img
+            style={{
               //   padding: "48px 0px",
-            }
-          }
-          src="intellidiag.png"
-          alt="IntelliDiag Logo"
-          height="22px"
-        />
+            }}
+            src="/intellidiag.png"
+            alt="IntelliDiag Logo"
+            height="22px"
+          />
+        </Link>
       </div>
 
       <div
@@ -45,60 +48,82 @@ function Appbar() {
           gap: "20px",
         }}
       >
-        <FaBell size={20} color="#0694FB" />
         <div
           style={{
-            display: "inline-flex",
+            position: "relative",
+            cursor: "pointer",
+            padding: "8px",
+            borderRadius: "8px",
+            transition: "background-color 0.3s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = "transparent";
+          }}
+        >
+          <FaBell
+            style={{
+              color: "#A0A0A0",
+              fontSize: "18px",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              top: "4px",
+              right: "4px",
+              width: "8px",
+              height: "8px",
+              backgroundColor: "#0694FB",
+              borderRadius: "50%",
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            cursor: "pointer",
+            padding: "8px 12px",
+            borderRadius: "8px",
+            transition: "background-color 0.3s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.target.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+          }}
+          onMouseLeave={(e) => {
+            e.target.style.backgroundColor = "transparent";
           }}
         >
           <div
             style={{
-              justifyContent: "flex-start",
+              width: "32px",
+              height: "32px",
+              backgroundColor: "#0694FB",
+              borderRadius: "50%",
+              display: "flex",
               alignItems: "center",
-              gap: 12,
-              display: "inline-flex",
+              justifyContent: "center",
+              color: "#FFFFFF",
+              fontSize: "14px",
+              fontWeight: "600",
             }}
           >
-            <img
-              style={{ width: 44, height: 44, borderRadius: 36.22 }}
-              src="https://placehold.co/44x44"
-            />
-            <div
-              style={{
-                flexDirection: "column",
-                justifyContent: "flex-start",
-                alignItems: "flex-start",
-
-                display: "inline-flex",
-              }}
-            >
-              <div
-                style={{
-                  justifyContent: "center",
-                  display: "flex",
-                  flexDirection: "column",
-                  color: "rgba(255, 255, 255, 0.50)",
-                  fontSize: 10,
-                  fontFamily: "Inter",
-                  fontWeight: "500",
-                  textTransform: "uppercase",
-                }}
-              >
-                MD
-              </div>
-              <div
-                style={{
-                  alignSelf: "stretch",
-                  color: "rgba(255, 255, 255, 0.80)",
-                  fontSize: 14,
-                  fontFamily: "Inter",
-                  fontWeight: "500",
-                }}
-              >
-                Courtney Smith
-              </div>
-            </div>
+            A
           </div>
+          <span
+            style={{
+              color: "#FFFFFF",
+              fontSize: "14px",
+              fontWeight: "500",
+            }}
+          >
+            Admin User
+          </span>
         </div>
       </div>
     </div>

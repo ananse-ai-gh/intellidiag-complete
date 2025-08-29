@@ -1,4 +1,5 @@
-"use client";
+'use client'
+
 import React, { useState, useRef, useEffect } from "react";
 import {
   motion,
@@ -8,8 +9,9 @@ import {
   animate,
   useIsPresent,
 } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import styled, { createGlobalStyle } from "styled-components";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Global styles for the overlay
 const GlobalOverlayStyle = createGlobalStyle`
@@ -199,203 +201,93 @@ const OverlayContent = styled(motion.div)`
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 20px;
-  z-index: 1001;
-  will-change: opacity;
+  padding: 20px;
+  box-sizing: border-box;
 `;
 
-const ModalContent = styled(motion.div)`
+const ModalContainer = styled(motion.div)`
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
+  padding: 40px;
+  max-width: 600px;
+  width: 100%;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: space-between;
-  text-align: left;
-  padding: 30px;
-  border-radius: 30px;
-  color: #f5f5f5;
-  will-change: transform;
-  background-color: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(8px);
-  width: 90%;
-  max-width: 400px;
+  overflow: hidden;
 
-  /* Mobile devices (320px - 480px) */
-  @media (min-width: 320px) and (max-width: 480px) {
-    font-size: 35px;
-    width: 70%;
-    margin-bottom: 35px;
+  @media (max-width: 768px) {
+    padding: 30px 20px;
+    margin: 20px;
   }
-
-  /* iPads, Tablets (481px - 768px) */
-  @media (min-width: 481px) and (max-width: 768px) {
-    // height: 52px;
-    width: 50%;
-    font-size: 18px;
-  }
-
-  /* Small screens, laptops (769px - 1024px) */
-  @media (min-width: 769px) and (max-width: 1024px) {
-    width: 384px;
-    font-size: 19px;
-  }
-
-  // /* Desktops, large screens (1025px - 1200px) */
-  // @media (min-width: 1025px) and (max-width: 1200px) {
-  //   height: 58px;
-  //   width: 182px;
-  //   font-size: 20px;
-  // }
-`;
-
-const ModalLogo = styled.img`
-  margin-bottom: 10px;
-  padding-right: 2px;
-  align-self: center;
-
-  /* Mobile devices (320px - 480px) */
-  @media (min-width: 320px) and (max-width: 480px) {
-    font-size: 35px;
-    width: 140px;
-    height: auto;
-    margin-bottom: 25px;
-  }
-
-  /* iPads, Tablets (481px - 768px) */
-  @media (min-width: 481px) and (max-width: 768px) {
-    width: 120px;
-    height: auto;
-    margin-bottom: 25px;
-  }
-  /* Small screens, laptops (769px - 1024px) */
-  @media (min-width: 769px) and (max-width: 1024px) {
-    height: auto;
-    width: 170px;
-
-    margin-bottom: 25px;
-  }
-`;
-
-const ModalHeader = styled.header`
-  display: flex;
-  flex-direction: column;
-  justify-content: left;
-  align-items: center;
-  margin-bottom: 10px;
-  gap: 5px;
 `;
 
 const ModalTitle = styled.h2`
-  font-size: 24px;
-  margin: 0;
-  font-weight: 500;
-
-  @media (min-width: 320px) and (max-width: 480px) {
-    font-size: 20px;
-  }
-
-  /* iPads, Tablets (481px - 768px) */
-  @media (min-width: 481px) and (max-width: 768px) {
-    font-size: 19px;
-  }
-
-  /* Small screens, laptops (769px - 1024px) */
-  @media (min-width: 769px) and (max-width: 1024px) {
-    font-size: 25px;
-    margin-bottom: 5px;
-  }
-`;
-
-const ModalSubtitle = styled.p`
-  font-size: 16px;
-  color: rgba(245, 245, 245, 0.75);
-  margin: 0;
-  text-align: center;
-  width: 90%;
-
-  @media (min-width: 320px) and (max-width: 480px) {
-    font-size: 14px;
-  }
-
-  /* iPads, Tablets (481px - 768px) */
-  @media (min-width: 481px) and (max-width: 768px) {
-    font-size: 13px;
-    width: 100%;
-    font-weight: 400;
-  }
-
-  /* Small screens, laptops (769px - 1024px) */
-  @media (min-width: 769px) and (max-width: 1024px) {
-    font-size: 18px;
-  }
-`;
-
-const ModalInputs = styled.div`
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  gap: 10px;
-  margin: 20px 0;
-  box-sizing: border-box;
-  color: white;
-
-  /* iPads, Tablets (481px - 768px) */
-  @media (min-width: 481px) and (max-width: 768px) {
-    font-size: 14px;
-    width: 100%;
-    height: 90px;
-  }
-
-  /* Small screens, laptops (769px - 1024px) */
-  @media (min-width: 769px) and (max-width: 1024px) {
-    font-size: 20px;
-  }
-`;
-
-const ModalInput = styled.input`
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  height: 50px;
-  border-radius: 10px;
-  padding-left: 12px;
-  background-color: transparent;
-  color: white;
-  font-size: 16px;
-  outline: none;
-  box-sizing: border-box;
-  width: 100%;
-
-  /* Small screens, laptops (769px - 1024px) */
-  @media (min-width: 769px) and (max-width: 1024px) {
-    font-size: 20px;
-    color: #fff;
-  }
-`;
-
-const ModalControls = styled.div`
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 20px;
-  width: 100%;
-`;
-
-const ModalButton = styled.button`
-  background-color: #0694fb;
+  font-size: 32px;
+  font-weight: 600;
+  margin: 0 0 20px 0;
   color: #fff;
-  border-radius: 10px;
-  padding: 15px 23px;
-  border: none;
-  cursor: pointer;
-  font-size: 16px;
-  width: 100%;
 
-  /* Small screens, laptops (769px - 1024px) */
-  @media (min-width: 769px) and (max-width: 1024px) {
-    height: 55px;
-    font-size: 18px;
-    margin-bottom: 10px;
+  @media (max-width: 768px) {
+    font-size: 24px;
+  }
+`;
+
+const ModalDescription = styled.p`
+  font-size: 18px;
+  line-height: 1.6;
+  margin: 0 0 30px 0;
+  color: #ccc;
+
+  @media (max-width: 768px) {
+    font-size: 16px;
+  }
+`;
+
+const ModalButton = styled(motion.button)`
+  background: linear-gradient(135deg, #0694fb, #0094ff);
+  border: none;
+  border-radius: 12px;
+  padding: 16px 32px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin: 10px;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(6, 148, 251, 0.3);
+  }
+
+  @media (max-width: 768px) {
+    padding: 14px 28px;
+    font-size: 16px;
+  }
+`;
+
+const CloseButton = styled(motion.button)`
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  font-size: 20px;
+  transition: all 0.3s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: rotate(90deg);
   }
 `;
 
@@ -437,7 +329,7 @@ const GradientCircle = styled(motion.div)`
 `;
 
 function Homepage() {
-  const navigate = useNavigate();
+  const router = useRouter();
   const [isOverlayOpen, setIsOverlayOpen] = useState(false);
   const ref = useRef(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -462,6 +354,10 @@ function Homepage() {
 
   const closeOverlay = () => {
     setIsOverlayOpen(false);
+  };
+
+  const handleGetStarted = () => {
+    router.push('/dashboard');
   };
 
   return (
@@ -494,7 +390,7 @@ function Homepage() {
 
         <AnimatePresence>
           {isOverlayOpen ? (
-            <ImmersiveOverlay close={closeOverlay} size={size} />
+            <ImmersiveOverlay close={closeOverlay} size={size} onGetStarted={handleGetStarted} />
           ) : null}
         </AnimatePresence>
       </HomepageContainer>
@@ -502,183 +398,72 @@ function Homepage() {
   );
 }
 
-function GradientOverlay({ size }) {
-  const breathe = useMotionValue(0);
-  const isPresent = useIsPresent();
+function ImmersiveOverlay({ close, size, onGetStarted }) {
+  const { isAuthenticated } = useAuth();
+  const router = useRouter();
 
-  useEffect(() => {
-    if (!isPresent) {
-      animate(breathe, 0, { duration: 0.5, ease: "easeInOut" });
+  const handleGetStarted = () => {
+    if (isAuthenticated) {
+      router.push('/dashboard');
+    } else {
+      router.push('/login');
     }
-
-    async function playBreathingAnimation() {
-      await animate(breathe, 1, {
-        duration: 0.5,
-        delay: 0.35,
-        ease: [0, 0.55, 0.45, 1],
-      });
-
-      animate(breathe, [null, 0.7, 1], {
-        duration: 15,
-        repeat: Infinity,
-        repeatType: "loop",
-        ease: "easeInOut",
-      });
-    }
-
-    playBreathingAnimation();
-  }, [isPresent]);
-
-  const enterDuration = 0.75;
-  const exitDuration = 0.5;
-  const expandingCircleRadius = size.width / 3;
-
-  return (
-    <GradientContainer>
-      <ExpandingCircle
-        initial={{
-          scale: 0,
-          opacity: 1,
-          backgroundColor: "#0694FB",
-        }}
-        animate={{
-          scale: 10,
-          opacity: 0.2,
-          backgroundColor: "rgb(34, 121, 179)",
-          transition: {
-            duration: enterDuration,
-            opacity: { duration: enterDuration, ease: "easeInOut" },
-          },
-        }}
-        exit={{
-          scale: 0,
-          opacity: 1,
-          backgroundColor: "rgb(42, 164, 246)",
-          transition: { duration: exitDuration },
-        }}
-        style={{
-          left: `calc(50% - ${expandingCircleRadius / 2}px)`,
-          top: "100%",
-          width: expandingCircleRadius,
-          height: expandingCircleRadius,
-          originX: 0.5,
-          originY: 1,
-        }}
-      />
-
-      <GradientCircle
-        className="top-left"
-        initial={{ opacity: 0 }}
-        animate={{
-          opacity: 0.9,
-          transition: { duration: enterDuration },
-        }}
-        exit={{
-          opacity: 0,
-          transition: { duration: exitDuration },
-        }}
-        style={{
-          scale: breathe,
-          width: size.width * 2,
-          height: size.width * 2,
-          top: -size.width,
-          left: -size.width,
-          background: "rgba(6, 148, 251, 0.7)",
-        }}
-      />
-
-      <GradientCircle
-        className="bottom-right"
-        initial={{ opacity: 0 }}
-        animate={{
-          opacity: 0.9,
-          transition: { duration: enterDuration },
-        }}
-        exit={{
-          opacity: 0,
-          transition: { duration: exitDuration },
-        }}
-        style={{
-          scale: breathe,
-          width: size.width * 2,
-          height: size.width * 2,
-          top: size.height - size.width,
-          left: 0,
-          background: "rgba(0, 147, 252, 0.73)",
-        }}
-      />
-    </GradientContainer>
-  );
-}
-
-function ImmersiveOverlay({ close, size }) {
-  const transition = {
-    duration: 0.35,
-    ease: [0.59, 0, 0.35, 1],
   };
 
-  const enteringState = {
-    rotateX: 0,
-    skewY: 0,
-    scaleY: 1,
-    scaleX: 1,
-    y: 0,
-    transition: {
-      ...transition,
-      y: { type: "spring", visualDuration: 0.7, bounce: 0.2 },
-    },
-  };
-
-  const exitingState = {
-    rotateX: -5,
-    skewY: -1.5,
-    scaleY: 2,
-    scaleX: 0.4,
-    y: 100,
+  const handleLearnMore = () => {
+    router.push('/features');
   };
 
   return (
-    <OverlayRoot onClick={close}>
-      <GradientOverlay size={size} />
-      <OverlayContent
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={transition}
-      >
-        <ModalContent
-          onClick={(e) => e.stopPropagation()}
-          initial={exitingState}
-          animate={enteringState}
-          exit={exitingState}
-          transition={transition}
+    <OverlayRoot>
+      <GradientContainer>
+        <ExpandingCircle
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 2, opacity: 0.6 }}
+          transition={{ duration: 1.5, ease: "easeOut" }}
+          style={{
+            left: size.width / 2,
+            top: size.height / 2,
+          }}
+        />
+        <GradientCircle
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 0.3 }}
+          transition={{ duration: 2, ease: "easeOut", delay: 0.5 }}
+          style={{
+            left: -size.width / 2,
+            top: -size.height / 2,
+            background: "radial-gradient(circle, rgba(0, 149, 255, 0.6) 0%, rgba(0, 149, 255, 0) 70%)",
+          }}
+        />
+      </GradientContainer>
+
+      <OverlayContent>
+        <ModalContainer
+          initial={{ scale: 0.8, opacity: 0, y: 50 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.8, opacity: 0, y: 50 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
         >
-          <ModalLogo
-            src="intellidiag.png"
-            alt="IntelliDiag Logo"
-            height="36px"
-          />
-
-          <ModalHeader>
-            <ModalTitle>Sign In to your account</ModalTitle>
-            <ModalSubtitle>
-              Sign in to access all the features and functions of our platform
-            </ModalSubtitle>
-          </ModalHeader>
-
-          <ModalInputs>
-            <ModalInput type="text" placeholder="Email" />
-
-            <ModalInput type="password" placeholder="Password" />
-          </ModalInputs>
-
-          <ModalControls>
-            <ModalButton onClick={close} className="confirm">
-              Sign In
+          <ModalTitle>Welcome to IntelliDiag</ModalTitle>
+          <ModalDescription>
+            Experience the future of medical diagnostics with AI-powered insights and advanced imaging technology.
+          </ModalDescription>
+          
+          <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <ModalButton onClick={handleGetStarted}>
+              {isAuthenticated ? 'Go to Dashboard' : 'Get Started'}
             </ModalButton>
-            <ModalFooterText>Don't have an account? Sign up</ModalFooterText>
-          </ModalControls>
-        </ModalContent>
+            <ModalButton onClick={handleLearnMore} style={{ 
+              background: 'rgba(255, 255, 255, 0.1)', 
+              border: '1px solid rgba(255, 255, 255, 0.3)' 
+            }}>
+              Learn More
+            </ModalButton>
+          </div>
+          
+          <CloseButton onClick={close}>×</CloseButton>
+        </ModalContainer>
       </OverlayContent>
     </OverlayRoot>
   );
