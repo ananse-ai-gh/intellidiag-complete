@@ -3,6 +3,7 @@
 import React from "react";
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { authAPI } from "@/services/api";
+import LogoutTransition from "@/components/LogoutTransition";
 
 interface User {
   id: string;
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     // Add a small delay to ensure the API is ready
@@ -124,10 +126,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = (redirectToHomepage: boolean = false) => {
+    // Clear user data immediately
     setUser(null);
     localStorage.removeItem("token");
     sessionStorage.removeItem("token");
+    
+    // Show logout animation briefly
+    setIsLoggingOut(true);
+    
+    // Complete logout after animation
+    setTimeout(() => {
+      setIsLoggingOut(false);
+      // Use window.location.replace for cleaner redirect
+      window.location.replace('/');
+    }, 1500);
+  };
+
+  const handleLogoutComplete = () => {
+    // This function is no longer needed as we handle everything in logout
+    setIsLoggingOut(false);
   };
 
   const updateProfile = async (profileData: Partial<User>) => {
@@ -170,7 +188,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updatePassword,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+              <LogoutTransition 
+          isLoggingOut={isLoggingOut} 
+        />
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

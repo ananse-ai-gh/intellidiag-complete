@@ -227,7 +227,7 @@ function About() {
           Built by award-winning medical researchers, engineers and developers,
           IntelliDiag gives you access to the tools, models, and methods behind
           our breakthrough diagnostic platform. Analyze, adapt, and expand.
-          whether you're a researcher, developer, or healthcare provider.
+          whether you&apos;re a researcher, developer, or healthcare provider.
         </AboutSubheading>
 
         <AboutCardsContainer

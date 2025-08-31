@@ -254,7 +254,7 @@ const Footer = () => {
           <FooterLink href="/">How it works</FooterLink>
           <FooterLink href="/">Help Center</FooterLink>
           <FooterLink href="/">Support</FooterLink>
-          <FooterLink href="/">What's new</FooterLink>
+          <FooterLink href="/">What&apos;s new</FooterLink>
         </FooterColumn>
 
         <FooterColumn>

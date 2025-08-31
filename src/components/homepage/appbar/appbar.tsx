@@ -269,8 +269,7 @@ function Appbar() {
   };
 
   const handleSignOut = () => {
-    logout();
-    router.push('/login');
+    logout(); // This will redirect to homepage
   };
 
   const clearNotifications = () => {

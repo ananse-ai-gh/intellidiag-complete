@@ -405,7 +405,7 @@ const ScheduleContent = () => {
               <CalendarDay
                 key={index}
                 isToday={day === today.getDate() && selectedDate.getMonth() === today.getMonth()}
-                hasAppointment={day && [1, 5, 12, 18, 25].includes(day)}
+                hasAppointment={Boolean(day && [1, 5, 12, 18, 25].includes(day))}
               >
                 {day}
               </CalendarDay>
@@ -416,7 +416,7 @@ const ScheduleContent = () => {
         <MainContent>
           <TodayTitle>
             <FaCalendar size={16} />
-            Today's Appointments
+                            Today&apos;s Appointments
           </TodayTitle>
 
           {appointments.map((appointment) => (

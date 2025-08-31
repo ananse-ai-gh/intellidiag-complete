@@ -9,6 +9,7 @@ export const Nav = styled.nav`
   justify-content: center;
   align-items: center;
   font-size: 1rem;
+  font-family: var(--font-primary);
   position: relative;
   z-index: 10;
   width: 100%;

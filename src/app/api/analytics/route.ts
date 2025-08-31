@@ -30,11 +30,11 @@ export async function GET(request: NextRequest) {
         }
 
         // Get total counts
-        const totalPatients = await getRow('SELECT COUNT(*) as count FROM patients WHERE isActive = 1');
-        const totalScans = await getRow('SELECT COUNT(*) as count FROM scans WHERE status != "archived"');
-        const totalUsers = await getRow('SELECT COUNT(*) as count FROM users WHERE isActive = 1');
-        const pendingScans = await getRow('SELECT COUNT(*) as count FROM scans WHERE status = "pending"');
-        const completedScans = await getRow('SELECT COUNT(*) as count FROM scans WHERE status = "completed"');
+        const totalPatients = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM patients WHERE isActive = 1');
+        const totalScans = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans WHERE status != "archived"');
+        const totalUsers = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM users WHERE isActive = 1');
+        const pendingScans = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans WHERE status = "pending"');
+        const completedScans = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans WHERE status = "completed"');
 
         // Get scans by type
         const scansByType = await getAll(`

@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
             countParams.push(status);
         }
 
-        const countResult = await getRow(countSql, countParams);
+        const countResult = await getRow<{ total: number }>(countSql, countParams);
         const total = countResult?.total || 0;
 
         return NextResponse.json({
@@ -156,7 +156,25 @@ export async function POST(request: NextRequest) {
         );
 
         // Get the created scan
-        const scan = await getRow(
+        const scan = await getRow<{
+            id: number;
+            scanId: string;
+            patientId: number;
+            scanType: string;
+            bodyPart: string;
+            scanDate: string;
+            uploadedById: number;
+            priority: string;
+            status: string;
+            notes?: string;
+            createdAt: string;
+            updatedAt: string;
+            patientFirstName: string;
+            patientLastName: string;
+            patientPatientId: string;
+            uploadedByFirstName: string;
+            uploadedByLastName: string;
+        }>(
             `SELECT s.*, p.firstName as patientFirstName, p.lastName as patientLastName, 
                     p.patientId, u.firstName as uploadedByFirstName, u.lastName as uploadedByLastName
              FROM scans s

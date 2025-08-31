@@ -10,10 +10,14 @@ interface CursorProps {
   $isClicking: boolean;
 }
 
-const Cursor = styled.div<CursorProps>`
+const Cursor = styled.div.attrs<CursorProps>(props => ({
+  style: {
+    top: `${props.y}px`,
+    left: `${props.x}px`,
+    transform: `translate(-50%, -50%) scale(${props.$isClicking ? 0.8 : 1})`,
+  }
+}))`
   position: fixed;
-  top: ${props => props.y}px;
-  left: ${props => props.x}px;
   width: 20px;
   height: 20px;
   background: ${props => props.$isHovering ? 'rgba(6, 148, 251, 0.8)' : 'rgba(255, 255, 255, 0.8)'};
@@ -21,7 +25,6 @@ const Cursor = styled.div<CursorProps>`
   pointer-events: none;
   z-index: 9999;
   transition: all 0.1s ease;
-  transform: translate(-50%, -50%) scale(${props => props.$isClicking ? 0.8 : 1});
   mix-blend-mode: difference;
   
   &::before {

@@ -15,7 +15,7 @@ import Partners2 from "@/components/partners2";
 
 gsap.registerPlugin(ScrollTrigger);
 
-const TOTAL_FRAMES = 298;
+const TOTAL_FRAMES = 265; // 484 - 220 + 1
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,7 +28,7 @@ export default function Home() {
     const frameImages: HTMLImageElement[] = [];
     const loadPromises = [];
 
-    for (let i = 220; i <= 500; i++) {
+    for (let i = 220; i <= 484; i++) {
       const img = new Image();
       img.src = `/frames/intellidiag${String(i).padStart(4, "0")}.jpg`;
       img.loading = "eager"; // Force immediate loading

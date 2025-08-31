@@ -1,0 +1,16 @@
+{
+  "name": "IntelliDiag",
+  "short_name": "IntelliDiag",
+  "description": "AI-Powered Medical Diagnostics",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#0694fb",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}

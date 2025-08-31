@@ -3,14 +3,26 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useModal } from '@/contexts/ModalContext';
 import { Nav, NavLink, NavMenu, Bars, UserMenu, UserButton, LogoutButton } from './NavBarElements';
 
 const Navbar = () => {
   const pathname = usePathname();
   const { user, isAuthenticated, logout } = useAuth();
+  const { openModal } = useModal();
 
   const handleLogout = () => {
-    logout();
+    logout(); // This will redirect to homepage
+  };
+
+  const handleLoginClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    openModal('login');
+  };
+
+  const handleSignUpClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    openModal('register');
   };
 
   return (
@@ -72,21 +84,34 @@ const Navbar = () => {
           </UserMenu>
         ) : (
           <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-            <Link href='/login' style={{ textDecoration: 'none' }}>
-              <span style={{ cursor: 'pointer' }}>
-                Login
-              </span>
-            </Link>
-            <Link href='/register' style={{ textDecoration: 'none' }}>
-              <span style={{ 
+            <button 
+              onClick={handleLoginClick}
+              style={{ 
+                background: 'none',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500'
+              }}
+            >
+              Login
+            </button>
+            <button 
+              onClick={handleSignUpClick}
+              style={{ 
                 background: 'linear-gradient(135deg, #0694fb, #0094ff)',
+                border: 'none',
+                color: '#fff',
                 padding: '10px 20px',
                 borderRadius: '8px',
-                cursor: 'pointer'
-              }}>
-                Sign Up
-              </span>
-            </Link>
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500'
+              }}
+            >
+              Sign Up
+            </button>
           </div>
         )}
       </Nav>

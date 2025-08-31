@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
             countParams.push(role);
         }
 
-        const countResult = await getRow(countSql, countParams);
+        const countResult = await getRow<{ total: number }>(countSql, countParams);
         const total = countResult?.total || 0;
 
         return NextResponse.json({
@@ -140,7 +140,17 @@ export async function POST(request: NextRequest) {
         );
 
         // Get the created user
-        const newUser = await getRow(
+        const newUser = await getRow<{
+            id: number;
+            email: string;
+            firstName: string;
+            lastName: string;
+            role: string;
+            specialization?: string;
+            licenseNumber?: string;
+            isActive: boolean;
+            createdAt: string;
+        }>(
             'SELECT id, email, firstName, lastName, role, specialization, licenseNumber, isActive, createdAt FROM users WHERE id = ?',
             [result.id]
         );

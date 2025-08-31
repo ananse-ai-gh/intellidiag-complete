@@ -242,7 +242,7 @@ export const initDatabase = () => {
 
 // Helper function to run queries with promises
 export const runQuery = (sql: string, params: any[] = []) => {
-    return new Promise((resolve, reject) => {
+    return new Promise<{ id: number; changes: number }>((resolve, reject) => {
         db.run(sql, params, function (err) {
             if (err) {
                 reject(err);
@@ -254,26 +254,26 @@ export const runQuery = (sql: string, params: any[] = []) => {
 };
 
 // Helper function to get single row
-export const getRow = (sql: string, params: any[] = []) => {
+export const getRow = <T = any>(sql: string, params: any[] = []): Promise<T | null> => {
     return new Promise((resolve, reject) => {
         db.get(sql, params, (err, row) => {
             if (err) {
                 reject(err);
             } else {
-                resolve(row);
+                resolve(row as T);
             }
         });
     });
 };
 
 // Helper function to get multiple rows
-export const getAll = (sql: string, params: any[] = []) => {
+export const getAll = <T = any>(sql: string, params: any[] = []): Promise<T[]> => {
     return new Promise((resolve, reject) => {
         db.all(sql, params, (err, rows) => {
             if (err) {
                 reject(err);
             } else {
-                resolve(rows);
+                resolve(rows as T[]);
             }
         });
     });

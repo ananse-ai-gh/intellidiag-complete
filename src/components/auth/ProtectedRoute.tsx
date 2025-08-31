@@ -41,7 +41,7 @@ export default function ProtectedRoute({ children, requiredRole = null }: Protec
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
-      router.push('/login');
+      router.push('/');
     }
   }, [loading, isAuthenticated, router]);
 

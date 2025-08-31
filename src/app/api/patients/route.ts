@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
             countParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
         }
 
-        const countResult = await getRow(countSql, countParams);
+        const countResult = await getRow<{ total: number }>(countSql, countParams);
         const total = countResult?.total || 0;
 
         return NextResponse.json({
@@ -143,7 +143,25 @@ export async function POST(request: NextRequest) {
         );
 
         // Get the created patient
-        const patient = await getRow(
+        const patient = await getRow<{
+            id: number;
+            patientId: string;
+            firstName: string;
+            lastName: string;
+            dateOfBirth: string;
+            gender: string;
+            contactNumber?: string;
+            email?: string;
+            street?: string;
+            city?: string;
+            state?: string;
+            zipCode?: string;
+            country?: string;
+            assignedDoctorId?: number;
+            isActive: boolean;
+            createdAt: string;
+            updatedAt: string;
+        }>(
             'SELECT * FROM patients WHERE id = ?',
             [result.id]
         );

@@ -502,7 +502,7 @@ const SchedulePage = () => {
           <TodayAppointments>
             <TodayHeader>
               <FaCalendar size={16} />
-              Today's Appointments
+                              Today&apos;s Appointments
             </TodayHeader>
             
             {todayAppointments.length > 0 ? (

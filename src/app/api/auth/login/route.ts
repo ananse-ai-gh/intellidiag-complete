@@ -26,7 +26,17 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if user exists and password is correct
-        const user = await getRow('SELECT * FROM users WHERE email = ?', [email]);
+        const user = await getRow<{
+            id: number;
+            email: string;
+            password: string;
+            firstName: string;
+            lastName: string;
+            role: string;
+            isActive: boolean;
+            [key: string]: any;
+        }>('SELECT * FROM users WHERE email = ?', [email]);
+
         if (!user || !(await bcrypt.compare(password, user.password))) {
             return NextResponse.json(
                 { status: 'error', message: 'Incorrect email or password' },

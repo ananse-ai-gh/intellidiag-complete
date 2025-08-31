@@ -10,6 +10,7 @@ function Dashboard() {
         height: "100vh",
         backgroundColor: "black",
         width: "100vw",
+        fontFamily: "var(--font-primary)",
         // gap: "40px",
         // overflow: "hidden", // Hide any overflow
       }}

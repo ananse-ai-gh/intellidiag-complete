@@ -1,10 +1,8 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-
-// Create axios instance with base configuration
+// Use relative URLs for Next.js API routes
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: "",
   headers: {
     'Content-Type': 'application/json',
   },
@@ -31,7 +29,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.href = '/';
     }
     return Promise.reject(error);
   }

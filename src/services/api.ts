@@ -1,9 +1,8 @@
 import axios from "axios";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
-
+// Use relative URLs for Next.js API routes
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: "",
   headers: {
     "Content-Type": "application/json",
   },
@@ -98,8 +97,6 @@ export const usersAPI = {
   update: (id: string, userData: any) =>
     api.put(`/api/users/${id}`, userData),
   delete: (id: string) => api.delete(`/api/users/${id}`),
-  updateRole: (id: string, roleData: any) =>
-    api.put(`/api/users/${id}/role`, roleData),
 };
 
 export const analyticsAPI = {

@@ -36,16 +36,33 @@ export async function POST(request: NextRequest) {
         );
 
         // Get the created user
-        const user = await getRow(
+        const user = await getRow<{
+            id: number;
+            email: string;
+            firstName: string;
+            lastName: string;
+            role: string;
+            specialization?: string;
+            licenseNumber?: string;
+            isActive: boolean;
+            createdAt: string;
+        }>(
             'SELECT id, email, firstName, lastName, role, specialization, licenseNumber, isActive, createdAt FROM users WHERE id = ?',
             [result.id]
         );
+
+        if (!user) {
+            return NextResponse.json(
+                { status: 'error', message: 'Error retrieving created user' },
+                { status: 500 }
+            );
+        }
 
         // Generate JWT token
         const token = jwt.sign(
             { userId: user.id, email: user.email, role: user.role },
             process.env.JWT_SECRET || 'your-secret-key',
-            { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+            { expiresIn: '7d' }
         );
 
         return NextResponse.json({
