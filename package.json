@@ -7,27 +7,46 @@
     "dev:3000": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@gsap/react": "^2.1.2",
+    "axios": "^1.6.2",
+    "bcryptjs": "^2.4.3",
+    "framer-motion": "^12.18.1",
+    "gsap": "^3.13.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
     "next": "14.0.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@gsap/react": "^2.1.2",
-    "gsap": "^3.13.0",
-    "framer-motion": "^12.18.1",
     "react-icons": "^5.5.0",
+    "sharp": "^0.33.0",
+    "sqlite3": "^5.1.6",
     "styled-components": "^6.1.19",
-    "axios": "^1.6.2"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "@types/node": "^20.10.4",
-    "@types/react": "^18.2.45",
-    "@types/react-dom": "^18.2.18",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.19.11",
+    "@types/react": "^18.3.24",
+    "@types/react-dom": "^18.3.7",
+    "@types/uuid": "^9.0.7",
     "eslint": "^8.56.0",
-    "eslint-config-next": "14.0.4"
+    "eslint-config-next": "14.0.4",
+    "typescript": "^5.9.2"
   },
-  "keywords": ["medical", "diagnostic", "ai", "healthcare", "nextjs"],
+  "keywords": [
+    "medical",
+    "diagnostic",
+    "ai",
+    "healthcare",
+    "nextjs",
+    "typescript"
+  ],
   "author": "IntelliDiag Team",
   "license": "MIT"
 }
