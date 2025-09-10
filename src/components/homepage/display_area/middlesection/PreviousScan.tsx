@@ -1,15 +1,27 @@
 import React from "react";
 import { FaEye, FaDownload, FaShare, FaCalendar } from "react-icons/fa";
+import { DashboardData } from '@/services/dashboardService';
 
-function PreviousScan() {
-  // Mock data for demonstration
-  const recentScan = {
-    patientName: "Sarah Johnson",
-    scanType: "Chest X-Ray",
-    date: "2024-08-28",
-    status: "Completed",
-    findings: "Normal cardiac silhouette, clear lung fields",
-    confidence: 94
+interface PreviousScanProps {
+  dashboardData: DashboardData | null;
+}
+
+function PreviousScan({ dashboardData }: PreviousScanProps) {
+  // Use real data from dashboard or show default/empty values
+  const recentScan = dashboardData?.lastViewedScan ? {
+    patientName: `${dashboardData.lastViewedScan.patientFirstName} ${dashboardData.lastViewedScan.patientLastName}`,
+    scanType: dashboardData.lastViewedScan.scanType,
+    date: dashboardData.lastViewedScan.createdAt,
+    status: dashboardData.lastViewedScan.status,
+    findings: dashboardData.lastViewedScan.aiFindings || "Analysis in progress",
+    confidence: dashboardData.lastViewedScan.confidence || 0
+  } : {
+    patientName: "No recent scans",
+    scanType: "No scan type",
+    date: new Date().toISOString(),
+    status: "No status",
+    findings: "No AI findings available",
+    confidence: 0
   };
 
   return (
@@ -53,19 +65,30 @@ function PreviousScan() {
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
           <div>
-            <h3 style={{ color: "#FFFFFF", margin: "0 0 8px 0", fontSize: "18px", fontWeight: "500" }}>
+            <h3 style={{ 
+              color: dashboardData?.lastViewedScan ? "#FFFFFF" : "#666666", 
+              margin: "0 0 8px 0", 
+              fontSize: "18px", 
+              fontWeight: "500",
+              fontStyle: dashboardData?.lastViewedScan ? "normal" : "italic"
+            }}>
               {recentScan.patientName}
             </h3>
-            <p style={{ color: "#A0A0A0", margin: "0", fontSize: "14px" }}>
+            <p style={{ 
+              color: dashboardData?.lastViewedScan ? "#A0A0A0" : "#666666", 
+              margin: "0", 
+              fontSize: "14px",
+              fontStyle: dashboardData?.lastViewedScan ? "normal" : "italic"
+            }}>
               {recentScan.scanType}
             </p>
           </div>
           <div style={{ 
-            backgroundColor: "rgba(6,148,251,0.17)", 
+            backgroundColor: dashboardData?.lastViewedScan ? "rgba(6,148,251,0.17)" : "rgba(102,102,102,0.2)", 
             padding: "4px 8px", 
             borderRadius: "6px",
             fontSize: "12px",
-            color: "#0694FB"
+            color: dashboardData?.lastViewedScan ? "#0694FB" : "#666666"
           }}>
             {recentScan.status}
           </div>
@@ -73,8 +96,12 @@ function PreviousScan() {
 
         <div style={{ marginBottom: "20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-            <FaCalendar style={{ color: "#A0A0A0", fontSize: "14px" }} />
-            <span style={{ color: "#A0A0A0", fontSize: "14px" }}>
+            <FaCalendar style={{ color: dashboardData?.lastViewedScan ? "#A0A0A0" : "#666666", fontSize: "14px" }} />
+            <span style={{ 
+              color: dashboardData?.lastViewedScan ? "#A0A0A0" : "#666666", 
+              fontSize: "14px",
+              fontStyle: dashboardData?.lastViewedScan ? "normal" : "italic"
+            }}>
               {new Date(recentScan.date).toLocaleDateString()}
             </span>
           </div>
@@ -83,18 +110,24 @@ function PreviousScan() {
             <p style={{ color: "#FFFFFF", margin: "0 0 8px 0", fontSize: "14px", fontWeight: "500" }}>
               AI Findings:
             </p>
-            <p style={{ color: "#A0A0A0", margin: "0", fontSize: "13px", lineHeight: "1.4" }}>
+            <p style={{ 
+              color: dashboardData?.lastViewedScan ? "#A0A0A0" : "#666666", 
+              margin: "0", 
+              fontSize: "13px", 
+              lineHeight: "1.4",
+              fontStyle: dashboardData?.lastViewedScan ? "normal" : "italic"
+            }}>
               {recentScan.findings}
             </p>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <div style={{ 
-              backgroundColor: "rgba(6,148,251,0.17)", 
+              backgroundColor: dashboardData?.lastViewedScan ? "rgba(6,148,251,0.17)" : "rgba(102,102,102,0.2)", 
               padding: "6px 12px", 
               borderRadius: "8px",
               fontSize: "12px",
-              color: "#0694FB"
+              color: dashboardData?.lastViewedScan ? "#0694FB" : "#666666"
             }}>
               Confidence: {recentScan.confidence}%
             </div>
@@ -119,8 +152,11 @@ function PreviousScan() {
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            transition: "all 0.2s ease"
-          }}>
+            transition: "all 0.2s ease",
+            opacity: dashboardData?.lastViewedScan ? "1" : "0.5"
+          }}
+          disabled={!dashboardData?.lastViewedScan}
+          >
             <FaEye size={12} />
             View
           </button>
@@ -135,8 +171,11 @@ function PreviousScan() {
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            transition: "all 0.2s ease"
-          }}>
+            transition: "all 0.2s ease",
+            opacity: dashboardData?.lastViewedScan ? "1" : "0.5"
+          }}
+          disabled={!dashboardData?.lastViewedScan}
+          >
             <FaDownload size={12} />
             Download
           </button>
@@ -151,8 +190,11 @@ function PreviousScan() {
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            transition: "all 0.2s ease"
-          }}>
+            transition: "all 0.2s ease",
+            opacity: dashboardData?.lastViewedScan ? "1" : "0.5"
+          }}
+          disabled={!dashboardData?.lastViewedScan}
+          >
             <FaShare size={12} />
             Share
           </button>

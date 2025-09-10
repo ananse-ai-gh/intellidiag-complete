@@ -1,8 +1,13 @@
 import React from "react";
 import Greeting from "./greeting";
 import Actions from "./actions";
+import { DashboardData } from '@/services/dashboardService';
 
-function Topsection() {
+interface TopsectionProps {
+  dashboardData: DashboardData | null;
+}
+
+function Topsection({ dashboardData }: TopsectionProps) {
   return (
     <div
       style={{
@@ -13,7 +18,7 @@ function Topsection() {
       }}
     >
       <Greeting />
-      <Actions />
+      <Actions dashboardData={dashboardData} />
     </div>
   );
 }

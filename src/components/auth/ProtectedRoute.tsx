@@ -53,6 +53,8 @@ export default function ProtectedRoute({ children, requiredRole = null }: Protec
         router.push('/dashboard');
       } else if (requiredRole === 'radiologist' && !["admin", "radiologist"].includes(user?.role || "")) {
         router.push('/dashboard');
+      } else if (requiredRole === 'patient' && !["admin", "patient"].includes(user?.role || "")) {
+        router.push('/dashboard');
       }
     }
   }, [loading, isAuthenticated, user, requiredRole, router]);
@@ -70,12 +72,14 @@ export default function ProtectedRoute({ children, requiredRole = null }: Protec
     return null;
   }
 
-  if (requiredRole && user?.role !== requiredRole) {
+  if (requiredRole) {
     if (requiredRole === 'admin' && user?.role !== 'admin') {
       return null;
     } else if (requiredRole === 'doctor' && !["admin", "doctor"].includes(user?.role || "")) {
       return null;
     } else if (requiredRole === 'radiologist' && !["admin", "radiologist"].includes(user?.role || "")) {
+      return null;
+    } else if (requiredRole === 'patient' && !["admin", "patient"].includes(user?.role || "")) {
       return null;
     }
   }

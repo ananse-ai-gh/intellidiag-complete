@@ -2,8 +2,13 @@ import React from "react";
 import Topsection from "./topsection/Topsection";
 import Middlesection from "./middlesection/middlesection";
 import Bottomsection from "./bottomsection/bottomsection";
+import { DashboardData } from '@/services/dashboardService';
 
-function Display() {
+interface DisplayProps {
+  dashboardData: DashboardData | null;
+}
+
+function Display({ dashboardData }: DisplayProps) {
   return (
     <div
       style={{
@@ -19,9 +24,9 @@ function Display() {
         // backgroundColor: "blue",
       }}
     >
-      <Topsection />
-      <Middlesection />
-      <Bottomsection />
+      <Topsection dashboardData={dashboardData} />
+      <Middlesection dashboardData={dashboardData} />
+      <Bottomsection dashboardData={dashboardData} />
     </div>
   );
 }

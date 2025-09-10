@@ -10,8 +10,16 @@ import CasesContent from './pages/CasesContent';
 import ScheduleContent from './pages/ScheduleContent';
 import HistoryContent from './pages/HistoryContent';
 import SettingsContent from './pages/SettingsContent';
+import ScansContent from './pages/ScansContentRedesigned';
+import AnalysisContent from './pages/AnalysisContent';
+import ReportsContent from './pages/ReportsContent';
+import { DashboardData } from '@/services/dashboardService';
 
-function PageContent() {
+interface PageContentProps {
+  dashboardData: DashboardData | null;
+}
+
+function PageContent({ dashboardData }: PageContentProps) {
   const pathname = usePathname();
 
   // Check if we're on a specific page route
@@ -19,10 +27,27 @@ function PageContent() {
                           pathname.includes('/cases') || 
                           pathname.includes('/schedule') || 
                           pathname.includes('/history') || 
-                          pathname.includes('/settings');
+                          pathname.includes('/settings') ||
+                          pathname.includes('/scans') ||
+                          pathname.includes('/analysis') ||
+                          pathname.includes('/reports');
+
+  // Extract the specific page from the pathname
+  const getCurrentPage = () => {
+    if (pathname.includes('/patients')) return 'patients';
+    if (pathname.includes('/cases')) return 'cases';
+    if (pathname.includes('/schedule')) return 'schedule';
+    if (pathname.includes('/history')) return 'history';
+    if (pathname.includes('/settings')) return 'settings';
+    if (pathname.includes('/scans')) return 'scans';
+    if (pathname.includes('/analysis')) return 'analysis';
+    if (pathname.includes('/reports')) return 'reports';
+    return null;
+  };
 
   // If we're on a specific page, render that page content
   if (isOnSpecificPage) {
+    const currentPage = getCurrentPage();
     return (
       <div
         style={{
@@ -31,11 +56,14 @@ function PageContent() {
           overflow: 'auto',
         }}
       >
-        {pathname.includes('/patients') && <PatientsContent />}
-        {pathname.includes('/cases') && <CasesContent />}
-        {pathname.includes('/schedule') && <ScheduleContent />}
-        {pathname.includes('/history') && <HistoryContent />}
-        {pathname.includes('/settings') && <SettingsContent />}
+        {currentPage === 'patients' && <PatientsContent />}
+        {currentPage === 'cases' && <CasesContent />}
+        {currentPage === 'schedule' && <ScheduleContent />}
+        {currentPage === 'history' && <HistoryContent />}
+        {currentPage === 'settings' && <SettingsContent />}
+        {currentPage === 'scans' && <ScansContent />}
+        {currentPage === 'analysis' && <AnalysisContent />}
+        {currentPage === 'reports' && <ReportsContent />}
       </div>
     );
   }
@@ -55,9 +83,9 @@ function PageContent() {
         alignItems: "stretch",
       }}
     >
-      <Topsection />
-      <Middlesection />
-      <Bottomsection />
+      <Topsection dashboardData={dashboardData} />
+      <Middlesection dashboardData={dashboardData} />
+      <Bottomsection dashboardData={dashboardData} />
     </div>
   );
 }

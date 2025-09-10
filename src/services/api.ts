@@ -76,6 +76,7 @@ export const scansAPI = {
     });
   },
   analyze: (scanId: string) => api.post(`/api/scans/${scanId}/analyze`),
+  getAnalysisStatus: (scanId: string) => api.get(`/api/scans/${scanId}/analysis-status`),
 };
 
 export const diagnosesAPI = {

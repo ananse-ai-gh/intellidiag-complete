@@ -12,10 +12,26 @@ function Sidebar() {
   const pathname = usePathname();
 
   const getMenuItems = () => {
+    const getBasePath = () => {
+      if (!user) return '/dashboard';
+      switch (user.role) {
+        case 'admin': return '/dashboard/admin';
+        case 'doctor': return '/dashboard/doctor';
+        case 'radiologist': return '/dashboard/radiologist';
+        case 'patient': return '/dashboard/patient';
+        default: return '/dashboard';
+      }
+    };
+
+    const basePath = getBasePath();
+
     if (!user) {
       return [
         { name: 'Dashboard', icon: <FiHome size={20} />, path: '/dashboard' },
         { name: 'Cases', icon: <FiUser size={20} />, path: '/dashboard/cases' },
+        { name: 'Scans', icon: <FiFileText size={20} />, path: '/dashboard/scans' },
+        { name: 'Analysis', icon: <FiActivity size={20} />, path: '/dashboard/analysis' },
+        { name: 'Reports', icon: <FiFileText size={20} />, path: '/dashboard/reports' },
         { name: 'History', icon: <RiHistoryLine size={20} />, path: '/dashboard/history' },
         { name: 'Settings', icon: <FiSettings size={20} />, path: '/dashboard/settings' },
       ];
@@ -24,44 +40,52 @@ function Sidebar() {
     switch (user.role) {
       case 'admin':
         return [
-          { name: 'Dashboard', icon: <FiHome size={20} />, path: '/dashboard/admin' },
+          { name: 'Dashboard', icon: <FiHome size={20} />, path: `${basePath}` },
           { name: 'Users', icon: <FiUsers size={20} />, path: '/dashboard/users' },
           { name: 'System', icon: <FiShield size={20} />, path: '/dashboard/system' },
+          { name: 'Scans', icon: <FiFileText size={20} />, path: `${basePath}/scans` },
+          { name: 'Analysis', icon: <FiActivity size={20} />, path: `${basePath}/analysis` },
+          { name: 'Reports', icon: <FiFileText size={20} />, path: `${basePath}/reports` },
           { name: 'Analytics', icon: <FiActivity size={20} />, path: '/dashboard/analytics' },
-          { name: 'Reports', icon: <FiFileText size={20} />, path: '/dashboard/reports' },
-          { name: 'Settings', icon: <FiSettings size={20} />, path: '/dashboard/settings' },
+          { name: 'Settings', icon: <FiSettings size={20} />, path: `${basePath}/settings` },
         ];
       case 'doctor':
         return [
-          { name: 'Dashboard', icon: <FiHome size={20} />, path: '/dashboard/doctor' },
+          { name: 'Dashboard', icon: <FiHome size={20} />, path: `${basePath}` },
           { name: 'Patients', icon: <FiUser size={20} />, path: '/dashboard/patients' },
           { name: 'Cases', icon: <FiFileText size={20} />, path: '/dashboard/cases' },
+          { name: 'Scans', icon: <FiFileText size={20} />, path: `${basePath}/scans` },
+          { name: 'Analysis', icon: <FiActivity size={20} />, path: `${basePath}/analysis` },
+          { name: 'Reports', icon: <FiFileText size={20} />, path: `${basePath}/reports` },
           { name: 'Schedule', icon: <FiCalendar size={20} />, path: '/dashboard/schedule' },
-          { name: 'History', icon: <RiHistoryLine size={20} />, path: '/dashboard/history' },
-          { name: 'Settings', icon: <FiSettings size={20} />, path: '/dashboard/settings' },
+          { name: 'History', icon: <RiHistoryLine size={20} />, path: `${basePath}/history` },
+          { name: 'Settings', icon: <FiSettings size={20} />, path: `${basePath}/settings` },
         ];
       case 'radiologist':
         return [
-          { name: 'Dashboard', icon: <FiHome size={20} />, path: '/dashboard/radiologist' },
-          { name: 'Scans', icon: <FiFileText size={20} />, path: '/dashboard/scans' },
-          { name: 'Analysis', icon: <FiActivity size={20} />, path: '/dashboard/analysis' },
-          { name: 'Reports', icon: <FiFileText size={20} />, path: '/dashboard/reports' },
-          { name: 'History', icon: <RiHistoryLine size={20} />, path: '/dashboard/history' },
-          { name: 'Settings', icon: <FiSettings size={20} />, path: '/dashboard/settings' },
+          { name: 'Dashboard', icon: <FiHome size={20} />, path: `${basePath}` },
+          { name: 'Scans', icon: <FiFileText size={20} />, path: `${basePath}/scans` },
+          { name: 'Analysis', icon: <FiActivity size={20} />, path: `${basePath}/analysis` },
+          { name: 'Reports', icon: <FiFileText size={20} />, path: `${basePath}/reports` },
+          { name: 'History', icon: <RiHistoryLine size={20} />, path: `${basePath}/history` },
+          { name: 'Settings', icon: <FiSettings size={20} />, path: `${basePath}/settings` },
         ];
       case 'patient':
         return [
-          { name: 'Dashboard', icon: <FiHome size={20} />, path: '/dashboard/patient' },
+          { name: 'Dashboard', icon: <FiHome size={20} />, path: `${basePath}` },
           { name: 'My Records', icon: <FiFileText size={20} />, path: '/dashboard/records' },
           { name: 'Appointments', icon: <FiCalendar size={20} />, path: '/dashboard/appointments' },
           { name: 'Results', icon: <FiActivity size={20} />, path: '/dashboard/results' },
-          { name: 'History', icon: <RiHistoryLine size={20} />, path: '/dashboard/history' },
-          { name: 'Settings', icon: <FiSettings size={20} />, path: '/dashboard/settings' },
+          { name: 'History', icon: <RiHistoryLine size={20} />, path: `${basePath}/history` },
+          { name: 'Settings', icon: <FiSettings size={20} />, path: `${basePath}/settings` },
         ];
       default:
         return [
           { name: 'Dashboard', icon: <FiHome size={20} />, path: '/dashboard' },
           { name: 'Cases', icon: <FiUser size={20} />, path: '/dashboard/cases' },
+          { name: 'Scans', icon: <FiFileText size={20} />, path: '/dashboard/scans' },
+          { name: 'Analysis', icon: <FiActivity size={20} />, path: '/dashboard/analysis' },
+          { name: 'Reports', icon: <FiFileText size={20} />, path: '/dashboard/reports' },
           { name: 'History', icon: <RiHistoryLine size={20} />, path: '/dashboard/history' },
           { name: 'Settings', icon: <FiSettings size={20} />, path: '/dashboard/settings' },
         ];
@@ -128,7 +152,7 @@ function Sidebar() {
               fontWeight: '400',
             }}
           >
-            {user.specialization ? `${user.specialization}` : user.role}
+            {user.firstName} {user.lastName}
           </p>
         )}
       </div>

@@ -1,8 +1,13 @@
 import React from "react";
 import Sidebar from "../sidebar/Sidebar";
 import PageContent from "../display_area/PageContent";
+import { DashboardData } from '@/services/dashboardService';
 
-function Maincontent() {
+interface MaincontentProps {
+  dashboardData: DashboardData | null;
+}
+
+function Maincontent({ dashboardData }: MaincontentProps) {
   return (
     <div
       style={{
@@ -12,11 +17,11 @@ function Maincontent() {
         flexDirection: "row",
         gap: "30px",
         boxSizing: "border-box",
-        marginTop: "15px", // reduced from 30px
+        marginTop: "15px",
       }}
     >
       <Sidebar />
-      <PageContent />
+      <PageContent dashboardData={dashboardData} />
     </div>
   );
 }

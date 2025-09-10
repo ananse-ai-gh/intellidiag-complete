@@ -69,7 +69,7 @@ export const scanAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  analyze: (scanId) => api.post(`/api/scans/${id}/analyze`),
+  analyze: (scanId) => api.post(`/api/scans/${scanId}/analyze`),
 };
 
 // Diagnosis API

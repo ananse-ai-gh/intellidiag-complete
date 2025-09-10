@@ -1,20 +1,33 @@
 import React from "react";
 import { FaUser, FaCalendar, FaFileAlt, FaChartLine, FaExclamationTriangle } from "react-icons/fa";
+import { DashboardData } from '@/services/dashboardService';
 
-function Patientoverview() {
-  // Mock data for demonstration
-  const patientStats = {
-    totalPatients: 1247,
-    activeCases: 23,
-    pendingScans: 8,
-    criticalCases: 3
+interface PatientoverviewProps {
+  dashboardData: DashboardData | null;
+}
+
+function Patientoverview({ dashboardData }: PatientoverviewProps) {
+  // Use real data from dashboard or show default/empty values
+  const patientStats = dashboardData?.overview ? {
+    totalPatients: dashboardData.overview.totalPatients,
+    activeCases: dashboardData.overview.activeCases,
+    pendingScans: dashboardData.overview.pendingScans,
+    criticalCases: dashboardData.overview.criticalCases
+  } : {
+    totalPatients: 0,
+    activeCases: 0,
+    pendingScans: 0,
+    criticalCases: 0
   };
 
-  const recentCases = [
-    { id: "CASE-001", patient: "Michael Chen", scanType: "MRI Brain", status: "In Progress", priority: "High" },
-    { id: "CASE-002", patient: "Emma Wilson", scanType: "CT Chest", status: "Completed", priority: "Medium" },
-    { id: "CASE-003", patient: "David Brown", scanType: "X-Ray Spine", status: "Pending", priority: "Low" }
-  ];
+  const recentCases = dashboardData?.recentCases ? 
+    dashboardData.recentCases.map(caseItem => ({
+      id: caseItem.scanId,
+      patient: `${caseItem.patientFirstName} ${caseItem.patientLastName}`,
+      scanType: caseItem.scanType,
+      status: caseItem.status,
+      priority: caseItem.priority
+    })) : [];
 
   return (
     <div
@@ -147,59 +160,78 @@ function Patientoverview() {
           <h3 style={{ color: "#FFFFFF", margin: "0 0 16px 0", fontSize: "16px", fontWeight: "500" }}>
             Recent Cases
           </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {recentCases.map((caseItem, index) => (
-              <div key={index} style={{
-                backgroundColor: "rgba(255,255,255,0.05)",
-                padding: "12px",
-                borderRadius: "8px",
-                border: "1px solid #1E1E1E"
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <p style={{ color: "#FFFFFF", margin: "0 0 4px 0", fontSize: "14px", fontWeight: "500" }}>
-                      {caseItem.patient}
-                    </p>
-                    <p style={{ color: "#A0A0A0", margin: "0", fontSize: "12px" }}>
-                      {caseItem.scanType} • {caseItem.id}
-                    </p>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <div style={{
-                      backgroundColor: 
-                        caseItem.priority === "High" ? "rgba(220,53,69,0.2)" :
-                        caseItem.priority === "Medium" ? "rgba(255,193,7,0.2)" :
-                        "rgba(40,167,69,0.2)",
-                      padding: "4px 8px",
-                      borderRadius: "4px",
-                      fontSize: "10px",
-                      color: 
-                        caseItem.priority === "High" ? "#DC3545" :
-                        caseItem.priority === "Medium" ? "#FFC107" :
-                        "#28A745"
-                    }}>
-                      {caseItem.priority}
+          {recentCases.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {recentCases.map((caseItem, index) => (
+                <div key={index} style={{
+                  backgroundColor: "rgba(255,255,255,0.05)",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  border: "1px solid #1E1E1E"
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <p style={{ color: "#FFFFFF", margin: "0 0 4px 0", fontSize: "14px", fontWeight: "500" }}>
+                        {caseItem.patient}
+                      </p>
+                      <p style={{ color: "#A0A0A0", margin: "0", fontSize: "12px" }}>
+                        {caseItem.scanType} • {caseItem.id}
+                      </p>
                     </div>
-                    <div style={{
-                      backgroundColor: 
-                        caseItem.status === "Completed" ? "rgba(40,167,69,0.2)" :
-                        caseItem.status === "In Progress" ? "rgba(255,193,7,0.2)" :
-                        "rgba(108,117,125,0.2)",
-                      padding: "4px 8px",
-                      borderRadius: "4px",
-                      fontSize: "10px",
-                      color: 
-                        caseItem.status === "Completed" ? "#28A745" :
-                        caseItem.status === "In Progress" ? "#FFC107" :
-                        "#6C757D"
-                    }}>
-                      {caseItem.status}
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div style={{
+                        backgroundColor: 
+                          caseItem.priority === "urgent" || caseItem.priority === "High" ? "rgba(220,53,69,0.2)" :
+                          caseItem.priority === "medium" || caseItem.priority === "Medium" ? "rgba(255,193,7,0.2)" :
+                          "rgba(40,167,69,0.2)",
+                        padding: "4px 8px",
+                        borderRadius: "4px",
+                        fontSize: "10px",
+                        color: 
+                          caseItem.priority === "urgent" || caseItem.priority === "High" ? "#DC3545" :
+                          caseItem.priority === "medium" || caseItem.priority === "Medium" ? "#FFC107" :
+                          "#28A745"
+                      }}>
+                        {caseItem.priority}
+                      </div>
+                      <div style={{
+                        backgroundColor: 
+                          caseItem.status === "completed" || caseItem.status === "Completed" ? "rgba(40,167,69,0.2)" :
+                          caseItem.status === "analyzing" || caseItem.status === "In Progress" ? "rgba(255,193,7,0.2)" :
+                          "rgba(108,117,125,0.2)",
+                        padding: "4px 8px",
+                        borderRadius: "4px",
+                        fontSize: "10px",
+                        color: 
+                          caseItem.status === "completed" || caseItem.status === "Completed" ? "#28A745" :
+                          caseItem.status === "analyzing" || caseItem.status === "In Progress" ? "#FFC107" :
+                          "#6C757D"
+                      }}>
+                        {caseItem.status}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{
+              backgroundColor: "rgba(255,255,255,0.05)",
+              padding: "24px",
+              borderRadius: "8px",
+              border: "1px solid #1E1E1E",
+              textAlign: "center"
+            }}>
+              <p style={{ 
+                color: "#666666", 
+                margin: "0", 
+                fontSize: "14px",
+                fontStyle: "italic"
+              }}>
+                No recent cases available
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

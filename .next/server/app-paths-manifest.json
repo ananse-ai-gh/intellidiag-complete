@@ -1,7 +1,8 @@
 {
   "/not-found": "app/not-found.js",
-  "/page": "app/page.js",
-  "/api/auth/login/route": "app/api/auth/login/route.js",
-  "/dashboard/doctor/page": "app/dashboard/doctor/page.js",
-  "/dashboard/page": "app/dashboard/page.js"
+  "/dashboard/radiologist/scans/page": "app/dashboard/radiologist/scans/page.js",
+  "/api/auth/me/route": "app/api/auth/me/route.js",
+  "/api/patients/route": "app/api/patients/route.js",
+  "/api/scans/route": "app/api/scans/route.js",
+  "/api/dashboard/route": "app/api/dashboard/route.js"
 }

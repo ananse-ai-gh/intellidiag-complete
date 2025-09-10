@@ -2,6 +2,7 @@ import React from "react";
 import PropTypes from "prop-types";
 import styled from "styled-components";
 import { FaBrain, FaChartBar, FaCog, FaPlay, FaPause, FaCheck } from "react-icons/fa";
+import { DashboardData } from '@/services/dashboardService';
 
 interface Model {
   name: string;
@@ -16,26 +17,30 @@ interface ModelCardProps {
   model: Model;
 }
 
+interface BottomsectionProps {
+  dashboardData: DashboardData | null;
+}
+
 const BottomSectionContainer = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1.25rem; /* increased from 1rem */
+  gap: 1.25rem;
   width: 100%;
-  margin-top: 10px; /* increased from 5px */
-  height: 18rem; /* 288px - increased from 256px */
+  margin-top: 10px;
+  height: 18rem;
   align-items: flex-start;
 `;
 
 const SectionLabel = styled.div`
   background-color: rgba(6, 148, 251, 0.17);
   display: inline-flex;
-  border-radius: 0.6875rem; /* 11px */
-  padding: 0.375rem 0.5625rem; /* 6px 9px */
+  border-radius: 0.6875rem;
+  padding: 0.375rem 0.5625rem;
 `;
 
 const LabelText = styled.p`
   margin: 0;
-  font-size: 0.8125rem; /* 13px */
+  font-size: 0.8125rem;
   color: rgba(6, 148, 251, 1);
   font-weight: 500;
 `;
@@ -44,9 +49,9 @@ const CardsContainer = styled.div`
   display: flex;
   height: 100%;
   width: 100%;
-  gap: 2.5rem; /* 40px - increased from 35px */
+  gap: 2.5rem;
   overflow-x: auto;
-  padding-bottom: 1rem; /* increased from 0.5rem */
+  padding-bottom: 1rem;
   scrollbar-width: thin;
   scrollbar-color: #333 transparent;
 
@@ -67,12 +72,12 @@ const CardsContainer = styled.div`
 const Card = styled.div`
   background-color: #0c0c0c;
   height: 100%;
-  min-width: 14.625rem; /* 234px */
-  border-radius: 1.125rem; /* 18px */
+  min-width: 14.625rem;
+  border-radius: 1.125rem;
   flex-shrink: 0;
   transition: transform 0.2s ease;
   border: 1px solid #1E1E1E;
-  padding: 24px; /* increased from 20px */
+  padding: 24px;
   display: flex;
   flex-direction: column;
 
@@ -207,58 +212,17 @@ const ModelCard: React.FC<ModelCardProps> = ({ model }) => {
   );
 };
 
-const Bottomsection = () => {
-  // Mock AI models data
-  const aiModels: Model[] = [
-    {
-      name: "Chest X-Ray AI",
-      status: "active",
-      accuracy: 94,
-      processingTime: "2.3s",
-      scansToday: 156,
-      totalScans: 12450
-    },
-    {
-      name: "Brain MRI AI",
-      status: "processing",
-      accuracy: 91,
-      processingTime: "4.7s",
-      scansToday: 89,
-      totalScans: 8230
-    },
-    {
-      name: "Spine CT AI",
-      status: "idle",
-      accuracy: 88,
-      processingTime: "3.1s",
-      scansToday: 67,
-      totalScans: 5670
-    },
-    {
-      name: "Cardiac Echo AI",
-      status: "active",
-      accuracy: 96,
-      processingTime: "1.8s",
-      scansToday: 234,
-      totalScans: 18920
-    },
-    {
-      name: "Lung CT AI",
-      status: "processing",
-      accuracy: 93,
-      processingTime: "5.2s",
-      scansToday: 123,
-      totalScans: 9450
-    },
-    {
-      name: "Abdominal US AI",
-      status: "idle",
-      accuracy: 87,
-      processingTime: "2.9s",
-      scansToday: 45,
-      totalScans: 3420
-    }
-  ];
+const Bottomsection: React.FC<BottomsectionProps> = ({ dashboardData }) => {
+  // Convert real AI model stats to the format expected by ModelCard
+  const aiModels: Model[] = dashboardData?.aiModelStats ? 
+    dashboardData.aiModelStats.map(stat => ({
+      name: `${stat.scanType} AI`,
+      status: stat.completedAnalyses > 0 ? 'active' : 'idle',
+      accuracy: Math.round(stat.avgConfidence || 0),
+      processingTime: `${(stat.avgProcessingTime || 0).toFixed(1)}s`,
+      scansToday: stat.scansToday || 0,
+      totalScans: stat.totalScans || 0
+    })) : [];
 
   return (
     <BottomSectionContainer>
@@ -266,11 +230,50 @@ const Bottomsection = () => {
         <LabelText>AI Models</LabelText>
       </SectionLabel>
 
-      <CardsContainer>
-        {aiModels.map((model, index) => (
-          <ModelCard key={index} model={model} />
-        ))}
-      </CardsContainer>
+      {aiModels.length > 0 ? (
+        <CardsContainer>
+          {aiModels.map((model, index) => (
+            <ModelCard key={index} model={model} />
+          ))}
+        </CardsContainer>
+      ) : (
+        <div style={{
+          backgroundColor: "#0C0C0C",
+          height: "100%",
+          width: "100%",
+          borderRadius: "18px",
+          padding: "24px",
+          border: "1px solid #1E1E1E",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center"
+        }}>
+          <div style={{ textAlign: "center" }}>
+            <FaBrain style={{ 
+              color: "#666666", 
+              fontSize: "48px", 
+              marginBottom: "16px",
+              opacity: "0.5"
+            }} />
+            <p style={{ 
+              color: "#666666", 
+              margin: "0", 
+              fontSize: "16px",
+              fontStyle: "italic"
+            }}>
+              No AI models available
+            </p>
+            <p style={{ 
+              color: "#666666", 
+              margin: "8px 0 0 0", 
+              fontSize: "14px",
+              opacity: "0.7"
+            }}>
+              AI models will appear here when scan data is available
+            </p>
+          </div>
+        </div>
+      )}
     </BottomSectionContainer>
   );
 };

@@ -100,7 +100,6 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json();
         const {
-            patientId,
             firstName,
             lastName,
             dateOfBirth,
@@ -116,20 +115,24 @@ export async function POST(request: NextRequest) {
         } = body;
 
         // Validation
-        if (!patientId || !firstName || !lastName || !dateOfBirth || !gender) {
+        if (!firstName || !lastName || !dateOfBirth || !gender) {
             return NextResponse.json(
                 { status: 'error', message: 'Please provide all required fields' },
                 { status: 400 }
             );
         }
 
-        // Check if patient already exists
+        // Generate unique patient ID
+        const year = new Date().getFullYear();
+        const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+        let patientId = `P${year}${randomNum}`;
+
+        // Check if patient ID already exists (very unlikely but good practice)
         const existingPatient = await getRow('SELECT id FROM patients WHERE patientId = ?', [patientId]);
         if (existingPatient) {
-            return NextResponse.json(
-                { status: 'error', message: 'Patient with this ID already exists' },
-                { status: 400 }
-            );
+            // If by chance the ID exists, generate a new one
+            const newRandomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+            patientId = `P${year}${newRandomNum}`;
         }
 
         // Create new patient

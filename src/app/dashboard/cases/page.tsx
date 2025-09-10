@@ -1,9 +1,10 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSearchParams } from 'next/navigation';
 import styled from 'styled-components';
-import { FaPlus, FaSearch, FaFilter, FaFileAlt, FaUser, FaCalendar, FaEye, FaEdit, FaTrash, FaDownload, FaShare } from 'react-icons/fa';
+import { FaPlus, FaSearch, FaFilter, FaFileAlt, FaUser, FaCalendar, FaEye, FaEdit, FaTrash, FaDownload, FaShare, FaPlay, FaBrain } from 'react-icons/fa';
 
 interface StatusBadgeProps {
   status: string;
@@ -280,11 +281,107 @@ const ActionButton = styled.button`
     color: #FF6B6B;
     background-color: rgba(255, 107, 107, 0.1);
   }
+
+  &.primary:hover {
+    color: #0694FB;
+    background-color: rgba(6, 148, 251, 0.1);
+  }
+
+  &.success:hover {
+    color: #28A745;
+    background-color: rgba(40, 167, 69, 0.1);
+  }
+`;
+
+const NewCaseNotification = styled.div`
+  background: linear-gradient(135deg, rgba(6, 148, 251, 0.1), rgba(6, 148, 251, 0.05));
+  border: 1px solid rgba(6, 148, 251, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  animation: slideIn 0.5s ease-out;
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+`;
+
+const NotificationContent = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+`;
+
+const NotificationIcon = styled.div`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(6, 148, 251, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0694FB;
+`;
+
+const NotificationText = styled.div`
+  color: #FFFFFF;
+  font-size: 14px;
+`;
+
+const NotificationActions = styled.div`
+  display: flex;
+  gap: 8px;
+`;
+
+const NotificationButton = styled.button`
+  background: rgba(6, 148, 251, 0.2);
+  border: 1px solid rgba(6, 148, 251, 0.4);
+  color: #0694FB;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  &:hover {
+    background: rgba(6, 148, 251, 0.3);
+    border-color: rgba(6, 148, 251, 0.6);
+  }
 `;
 
 const CasesPage = () => {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
+  const [showNewCaseNotification, setShowNewCaseNotification] = useState(false);
+  const [newScanId, setNewScanId] = useState<string | null>(null);
+
+  // Check for new scan parameter on component mount
+  useEffect(() => {
+    const newScan = searchParams.get('newScan');
+    if (newScan) {
+      setNewScanId(newScan);
+      setShowNewCaseNotification(true);
+      // Remove the parameter from URL after reading it
+      const url = new URL(window.location.href);
+      url.searchParams.delete('newScan');
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [searchParams]);
 
   // Mock data
   const cases = [
@@ -381,6 +478,17 @@ const CasesPage = () => {
     console.log('Share case:', caseId);
   };
 
+  const handleStartAnalysis = (caseId: string) => {
+    console.log('Start AI analysis for case:', caseId);
+    // Here you would typically call the AI analysis API
+    // For now, we'll just show a console log
+  };
+
+  const handleViewAnalysis = (caseId: string) => {
+    console.log('View analysis for case:', caseId);
+    // Here you would navigate to the analysis page
+  };
+
   const filteredCases = cases.filter(caseItem =>
     caseItem.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     caseItem.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -396,6 +504,28 @@ const CasesPage = () => {
           New Case
         </AddButton>
       </Header>
+
+      {showNewCaseNotification && (
+        <NewCaseNotification>
+          <NotificationContent>
+            <NotificationIcon>
+              <FaBrain size={20} />
+            </NotificationIcon>
+            <NotificationText>
+              <strong>New case created successfully!</strong> Your scan is ready for AI analysis.
+            </NotificationText>
+          </NotificationContent>
+          <NotificationActions>
+            <NotificationButton onClick={() => handleStartAnalysis(newScanId!)}>
+              <FaPlay size={12} />
+              Start Analysis
+            </NotificationButton>
+            <NotificationButton onClick={() => setShowNewCaseNotification(false)}>
+              Dismiss
+            </NotificationButton>
+          </NotificationActions>
+        </NewCaseNotification>
+      )}
 
       <SearchBar>
         <SearchInput>
@@ -469,6 +599,24 @@ const CasesPage = () => {
               <ActionButton onClick={() => handleViewCase(caseItem.id)}>
                 <FaEye size={14} />
               </ActionButton>
+              {caseItem.status === 'pending' && (
+                <ActionButton 
+                  className="primary" 
+                  onClick={() => handleStartAnalysis(caseItem.id)}
+                  title="Start AI Analysis"
+                >
+                  <FaBrain size={14} />
+                </ActionButton>
+              )}
+              {caseItem.status === 'processing' && (
+                <ActionButton 
+                  className="success" 
+                  onClick={() => handleViewAnalysis(caseItem.id)}
+                  title="View Analysis"
+                >
+                  <FaPlay size={14} />
+                </ActionButton>
+              )}
               <ActionButton onClick={() => handleEditCase(caseItem.id)}>
                 <FaEdit size={14} />
               </ActionButton>

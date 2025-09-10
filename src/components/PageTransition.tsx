@@ -56,23 +56,18 @@ export default function PageTransition({ children }: PageTransitionProps) {
   const [transitionText, setTransitionText] = useState('');
 
   useEffect(() => {
-    // Determine transition text based on the route
-    if (pathname === '/dashboard' || pathname.startsWith('/dashboard/')) {
-      setTransitionText('Welcome to your dashboard');
-    } else if (pathname === '/') {
+    // Only show transition for homepage, not for dashboard routes
+    if (pathname === '/') {
       setTransitionText('Welcome back');
-    } else {
-      setTransitionText('Loading...');
-    }
-
-    // Show transition for dashboard routes
-    if (pathname === '/dashboard' || pathname.startsWith('/dashboard/')) {
       setIsTransitioning(true);
       
       // Hide transition after animation completes
       setTimeout(() => {
         setIsTransitioning(false);
-      }, 1200); // Reduced timing for more seamless transition
+      }, 1200);
+    } else {
+      // For all other routes (including dashboard), show no transition
+      setIsTransitioning(false);
     }
   }, [pathname]);
 

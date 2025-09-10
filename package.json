@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "setup": "node scripts/setup-dashboard.js",
+    "setup:db": "node scripts/setup-database.js"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
