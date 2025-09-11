@@ -1,16 +1,11 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/database';
+import { getRow } from '@/lib/database';
 
 // GET /api/health
 export async function GET() {
     try {
         // Test database connection
-        await new Promise((resolve, reject) => {
-            db.get('SELECT 1', (err) => {
-                if (err) reject(err);
-                else resolve(true);
-            });
-        });
+        await getRow('SELECT 1');
 
         return NextResponse.json({
             status: 'success',
