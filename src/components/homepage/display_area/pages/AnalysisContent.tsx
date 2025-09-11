@@ -672,6 +672,11 @@ const AnalysisContent = () => {
     avgConfidence: 0
   });
 
+  const showNotification = useCallback((type: 'success' | 'error' | 'info', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 5000);
+  }, []);
+
   const loadStats = useCallback((analysesData: Analysis[] = analyses) => {
     try {
       // Calculate stats from provided analyses data using aiStatus
@@ -716,7 +721,7 @@ const AnalysisContent = () => {
     } finally {
       setLoading(false);
     }
-  }, [loadStats]);
+  }, [loadStats, showNotification]);
 
   useEffect(() => {
     loadAnalyses();
@@ -897,11 +902,6 @@ const AnalysisContent = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const showNotification = (type: 'success' | 'error' | 'info', message: string) => {
-    setNotification({ type, message });
-    setTimeout(() => setNotification(null), 5000);
   };
 
   const filteredAnalyses = Array.isArray(analyses) ? analyses.filter(analysis => {

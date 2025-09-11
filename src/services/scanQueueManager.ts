@@ -82,7 +82,10 @@ class ScanQueueManager {
         }, this.PROCESSING_INTERVAL);
 
         this.isStarted = true;
-        console.log('🚀 Queue processing started');
+        // Only log in development, not during build
+        if (process.env.NODE_ENV === 'development') {
+            console.log('🚀 Queue processing started');
+        }
     }
 
     /**
@@ -398,7 +401,10 @@ class ScanQueueManager {
             clearInterval(this.processingInterval);
             this.processingInterval = null;
         }
-        console.log('🛑 Queue processing stopped');
+        // Only log in development, not during build
+        if (process.env.NODE_ENV === 'development') {
+            console.log('🛑 Queue processing stopped');
+        }
     }
 }
 
