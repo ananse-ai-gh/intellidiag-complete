@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   FaBrain, FaSearch, FaEye, FaEdit, FaDownload, FaCheck, FaClock, 
@@ -672,11 +672,28 @@ const AnalysisContent = () => {
     avgConfidence: 0
   });
 
-  useEffect(() => {
-    loadAnalyses();
-  }, [filters, sort]);
+  const loadStats = useCallback((analysesData: Analysis[] = analyses) => {
+    try {
+      // Calculate stats from provided analyses data using aiStatus
+      const completedAnalyses = analysesData.filter(a => a.aiStatus === 'completed');
+      const avgConfidence = completedAnalyses.length > 0 
+        ? completedAnalyses.reduce((sum, a) => sum + (a.confidence || 0), 0) / completedAnalyses.length
+        : 0;
 
-  const loadAnalyses = async () => {
+      setStats({
+        total: analysesData.length,
+        pending: analysesData.filter(a => a.aiStatus === 'pending').length,
+        processing: analysesData.filter(a => a.aiStatus === 'processing').length,
+        completed: completedAnalyses.length,
+        failed: analysesData.filter(a => a.aiStatus === 'failed').length,
+        avgConfidence: Math.round(avgConfidence)
+      });
+    } catch (error) {
+      console.error('Error calculating stats:', error);
+    }
+  }, [analyses]);
+
+  const loadAnalyses = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.get('/api/scans');
@@ -699,28 +716,11 @@ const AnalysisContent = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [loadStats]);
 
-  const loadStats = (analysesData: Analysis[] = analyses) => {
-    try {
-      // Calculate stats from provided analyses data using aiStatus
-      const completedAnalyses = analysesData.filter(a => a.aiStatus === 'completed');
-      const avgConfidence = completedAnalyses.length > 0 
-        ? completedAnalyses.reduce((sum, a) => sum + (a.confidence || 0), 0) / completedAnalyses.length
-        : 0;
-
-      setStats({
-        total: analysesData.length,
-        pending: analysesData.filter(a => a.aiStatus === 'pending').length,
-        processing: analysesData.filter(a => a.aiStatus === 'processing').length,
-        completed: completedAnalyses.length,
-        failed: analysesData.filter(a => a.aiStatus === 'failed').length,
-        avgConfidence: Math.round(avgConfidence)
-      });
-    } catch (error) {
-      console.error('Error calculating stats:', error);
-    }
-  };
+  useEffect(() => {
+    loadAnalyses();
+  }, [loadAnalyses]);
 
   const handleSearch = (value: string) => {
     setSearch(prev => ({ ...prev, term: value }));

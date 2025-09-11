@@ -2,6 +2,10 @@ import { NextResponse, NextRequest } from 'next/server';
 import { verifyToken } from '@/lib/auth';
 import { getAll } from '@/lib/database';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
+
 export async function GET(request: NextRequest) {
   try {
     // Verify authentication

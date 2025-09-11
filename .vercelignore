@@ -1,0 +1,8 @@
+.next
+node_modules
+.env*.local
+*.md
+data/*.db
+data/*.db-journal
+public/uploads/*
+!public/uploads/.gitkeep

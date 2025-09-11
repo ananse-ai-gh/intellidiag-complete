@@ -26,9 +26,10 @@ class ScanQueueManager {
     private readonly PROCESSING_INTERVAL = 5000; // 5 seconds
     private readonly MAX_RETRIES = 3;
     private readonly TIMEOUT_DURATION = 300000; // 5 minutes
+    private isStarted = false;
 
     constructor() {
-        this.startProcessing();
+        // Don't start processing automatically - wait for explicit start
     }
 
     /**
@@ -36,6 +37,11 @@ class ScanQueueManager {
      */
     async addToQueue(scanId: string, scanType: string, priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium'): Promise<boolean> {
         try {
+            // Start processing if not already started
+            if (!this.isStarted) {
+                this.startProcessing();
+            }
+
             const priorityLevel = this.getPriorityLevel(priority);
             const queueId = this.generateQueueId();
 
@@ -75,6 +81,7 @@ class ScanQueueManager {
             }
         }, this.PROCESSING_INTERVAL);
 
+        this.isStarted = true;
         console.log('🚀 Queue processing started');
     }
 
