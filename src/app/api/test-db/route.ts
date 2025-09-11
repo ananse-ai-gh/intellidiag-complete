@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRow, getAll } from '@/lib/database';
 import axios from 'axios';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
+
 // GET /api/test-db
 export async function GET(request: NextRequest) {
     try {

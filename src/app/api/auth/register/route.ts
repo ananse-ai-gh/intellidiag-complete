@@ -3,6 +3,10 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { runQuery, getRow } from '@/lib/database';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
+
 // POST /api/auth/register
 export async function POST(request: NextRequest) {
     try {

@@ -3,6 +3,10 @@ import { getAll, runQuery, getRow } from '@/lib/database';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
+
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
 // Helper function to verify JWT token
