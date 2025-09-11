@@ -61,37 +61,73 @@ interface Notification {
 
 // Styled Components
 const ContentContainer = styled.div`
-  padding: 24px;
+  padding: 16px;
   background-color: transparent;
   min-height: 100vh;
   color: #FFFFFF;
   width: 100%;
+
+  @media (min-width: 640px) {
+    padding: 20px;
+  }
+
+  @media (min-width: 768px) {
+    padding: 24px;
+  }
 `;
 
 const Header = styled.div`
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 32px;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 16px;
+  margin-bottom: 24px;
+
+  @media (min-width: 640px) {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  @media (min-width: 768px) {
+    margin-bottom: 32px;
+  }
 `;
 
 const PageTitle = styled.h1`
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 600;
   margin: 0;
   color: #FFFFFF;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+
+  @media (min-width: 640px) {
+    font-size: 24px;
+    gap: 10px;
+  }
+
+  @media (min-width: 768px) {
+    font-size: 28px;
+    gap: 12px;
+  }
 `;
 
 const HeaderActions = styled.div`
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
+  width: 100%;
+
+  @media (min-width: 640px) {
+    gap: 10px;
+    width: auto;
+  }
+
+  @media (min-width: 768px) {
+    gap: 12px;
+  }
 `;
 
 const Button = styled.button<{ variant?: 'primary' | 'secondary' | 'danger' | 'success' }>`
@@ -105,15 +141,31 @@ const Button = styled.button<{ variant?: 'primary' | 'secondary' | 'danger' | 's
   }};
   color: white;
   border: none;
-  padding: 12px 20px;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex: 1;
+  justify-content: center;
+
+  @media (min-width: 640px) {
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    gap: 8px;
+    flex: none;
+    justify-content: flex-start;
+  }
+
+  @media (min-width: 768px) {
+    padding: 12px 20px;
+    font-size: 14px;
+  }
 
   &:hover {
     transform: translateY(-2px);
@@ -129,16 +181,25 @@ const Button = styled.button<{ variant?: 'primary' | 'secondary' | 'danger' | 's
 
 const SearchBar = styled.div`
   display: flex;
-  gap: 16px;
-  margin-bottom: 24px;
-  align-items: center;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+
+  @media (min-width: 640px) {
+    flex-direction: row;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
 `;
 
 const SearchInput = styled.div`
   position: relative;
   flex: 1;
-  max-width: 400px;
+  width: 100%;
+
+  @media (min-width: 640px) {
+    max-width: 400px;
+  }
 `;
 
 const SearchIcon = styled.div`
@@ -232,20 +293,26 @@ const SearchModeSelect = styled.select`
 
 const FilterContainer = styled.div`
   display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+
+  @media (min-width: 640px) {
+    flex-direction: row;
+    gap: 12px;
+    width: auto;
+  }
 `;
 
 const FilterSelect = styled.select`
-  width: auto;
+  width: 100%;
   min-width: 140px;
-  padding: 12px 16px 12px 45px;
+  padding: 10px 12px 10px 40px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  border-radius: 8px;
   color: #ffffff;
-  font-size: 14px;
+  font-size: 13px;
   font-family: var(--font-primary);
   transition: all 0.3s ease;
   backdrop-filter: blur(10px);
@@ -255,9 +322,18 @@ const FilterSelect = styled.select`
   -moz-appearance: none;
   background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239c9c9c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
   background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 16px;
-  padding-right: 40px;
+  background-position: right 10px center;
+  background-size: 14px;
+  padding-right: 35px;
+
+  @media (min-width: 640px) {
+    width: auto;
+    padding: 12px 16px 12px 45px;
+    font-size: 14px;
+    background-position: right 12px center;
+    background-size: 16px;
+    padding-right: 40px;
+  }
 
   & option {
     background: #1a1a3a;
@@ -311,21 +387,43 @@ const SearchResultsInfo = styled.div`
 
 const StatsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 32px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+
+  @media (min-width: 640px) {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    margin-bottom: 32px;
+  }
 `;
 
 const StatCard = styled.div`
   background-color: #1A1A1A;
   border: 1px solid #333;
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 8px;
+  padding: 12px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   transition: all 0.3s ease;
   cursor: pointer;
+
+  @media (min-width: 640px) {
+    border-radius: 10px;
+    padding: 16px;
+    gap: 14px;
+  }
+
+  @media (min-width: 768px) {
+    border-radius: 12px;
+    padding: 20px;
+    gap: 16px;
+  }
 
   &:hover {
     border-color: #0694FB;
@@ -334,15 +432,29 @@ const StatCard = styled.div`
 `;
 
 const StatIcon = styled.div`
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 16px;
   background: linear-gradient(135deg, ${props => props.color || '#0694FB'}, ${props => props.color || '#0094ff'});
   color: white;
+
+  @media (min-width: 640px) {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    font-size: 18px;
+  }
+
+  @media (min-width: 768px) {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    font-size: 20px;
+  }
 `;
 
 const StatContent = styled.div`
@@ -350,26 +462,51 @@ const StatContent = styled.div`
 `;
 
 const StatValue = styled.div`
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 600;
   color: #FFFFFF;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+
+  @media (min-width: 640px) {
+    font-size: 20px;
+    margin-bottom: 3px;
+  }
+
+  @media (min-width: 768px) {
+    font-size: 24px;
+    margin-bottom: 4px;
+  }
 `;
 
 const StatLabel = styled.div`
-  font-size: 14px;
+  font-size: 11px;
   color: #A0A0A0;
+
+  @media (min-width: 640px) {
+    font-size: 12px;
+  }
+
+  @media (min-width: 768px) {
+    font-size: 14px;
+  }
 `;
 
 const BulkActionsBar = styled.div<{ visible: boolean }>`
   display: ${props => props.visible ? 'flex' : 'none'};
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
   background-color: #0F0F0F;
   border: 1px solid #333;
   border-radius: 8px;
   margin-bottom: 16px;
+
+  @media (min-width: 640px) {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+  }
 `;
 
 const Checkbox = styled.input`

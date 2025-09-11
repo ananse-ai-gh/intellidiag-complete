@@ -33,19 +33,35 @@ const ModalOverlay = styled.div<{ isOpen: boolean }>`
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  padding: 20px;
+  padding: 16px;
+
+  @media (min-width: 640px) {
+    padding: 20px;
+  }
 `;
 
 const ModalContent = styled.div`
   background: #1a1a1a;
-  border-radius: 12px;
-  padding: 32px;
-  max-width: 800px;
+  border-radius: 8px;
+  padding: 20px;
+  max-width: 100%;
   width: 100%;
-  max-height: 90vh;
+  max-height: 95vh;
   overflow-y: auto;
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.1);
+
+  @media (min-width: 640px) {
+    border-radius: 10px;
+    padding: 24px;
+    max-width: 600px;
+  }
+
+  @media (min-width: 768px) {
+    border-radius: 12px;
+    padding: 32px;
+    max-width: 800px;
+  }
 `;
 
 const CloseButton = styled.button`
@@ -71,18 +87,35 @@ const CloseButton = styled.button`
 
 const ModalTitle = styled.h2`
   color: #0694fb;
-  margin: 0 0 24px 0;
-  font-size: 24px;
+  margin: 0 0 20px 0;
+  font-size: 18px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+
+  @media (min-width: 640px) {
+    font-size: 20px;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  @media (min-width: 768px) {
+    font-size: 24px;
+    gap: 12px;
+  }
 `;
 
 const FormGrid = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 24px;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+
+  @media (min-width: 640px) {
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 24px;
+  }
 `;
 
 const FormGroup = styled.div`
