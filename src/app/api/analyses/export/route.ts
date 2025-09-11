@@ -1,6 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { verifyToken } from '@/lib/auth';
-import { getAll } from '@/lib/database';
+import { supabaseDb } from '@/lib/supabaseDatabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -22,41 +22,35 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const scanType = searchParams.get('scanType');
 
-    // Build query with filters
-    let query = `
-      SELECT 
-        s.*, p.firstName as patientFirstName, p.lastName as patientLastName,
-        p.patientId as patientIdNumber, u.firstName as uploadedByFirstName,
-        u.lastName as uploadedByLastName, aa.status as aiStatus,
-        aa.confidence, aa.findings as aiFindings
-      FROM scans s
-      JOIN patients p ON s.patientId = p.id
-      JOIN users u ON s.uploadedById = u.id
-      LEFT JOIN ai_analysis aa ON s.id = aa.scanId
-      WHERE aa.status IS NOT NULL
-    `;
-    
-    const queryParams: any[] = [];
-    
+    // Get all scans with analyses using Supabase
+    let query = supabaseDb.client
+      .from('scans')
+      .select(`
+        *,
+        patients!inner(*),
+        users!inner(*),
+        analyses!inner(*)
+      `)
+      .not('analyses.status', 'is', null);
+
     if (ids) {
       const idList = ids.split(',').map(id => id.trim());
-      query += ` AND s.scanId IN (${idList.map(() => '?').join(',')})`;
-      queryParams.push(...idList);
+      query = query.in('id', idList);
     }
-    
-    if (status) {
-      query += ` AND aa.status = ?`;
-      queryParams.push(status);
-    }
-    
-    if (scanType) {
-      query += ` AND s.scanType = ?`;
-      queryParams.push(scanType);
-    }
-    
-    query += ` ORDER BY s.createdAt DESC`;
 
-    const analyses = await getAll(query, queryParams);
+    if (status) {
+      query = query.eq('analyses.status', status);
+    }
+
+    if (scanType) {
+      query = query.eq('scan_type', scanType);
+    }
+
+    const { data: analyses, error } = await query.order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
 
     // Convert to CSV format
     const csvHeaders = [
@@ -75,21 +69,21 @@ export async function GET(request: NextRequest) {
       'Created At'
     ];
 
-    const csvRows = analyses.map((analysis: any) => [
-      analysis.scanId,
-      `${analysis.patientFirstName} ${analysis.patientLastName}`,
-      analysis.patientIdNumber,
-      analysis.scanType,
-      analysis.bodyPart,
-      analysis.aiStatus,
-      analysis.confidence || 'N/A',
-      analysis.aiFindings || 'N/A',
-      analysis.scanDate,
-      analysis.priority,
-      analysis.notes || 'N/A',
-      `${analysis.uploadedByFirstName} ${analysis.uploadedByLastName}`,
-      analysis.createdAt
-    ]);
+    const csvRows = analyses?.map((scan: any) => [
+      scan.id,
+      `${scan.patients.first_name} ${scan.patients.last_name}`,
+      scan.patients.id,
+      scan.scan_type,
+      scan.body_part,
+      scan.analyses.status,
+      scan.analyses.confidence || 'N/A',
+      scan.analyses.result?.findings || 'N/A',
+      scan.created_at,
+      scan.priority,
+      scan.findings || 'N/A',
+      `${scan.users.first_name} ${scan.users.last_name}`,
+      scan.created_at
+    ]) || [];
 
     const csvContent = [
       csvHeaders.join(','),

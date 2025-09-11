@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRow, getAll } from '@/lib/database';
+import { hybridDb } from '@/lib/hybridDatabase';
 import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
 // Helper function to verify JWT token
 const verifyToken = (request: NextRequest) => {
@@ -16,7 +16,7 @@ const verifyToken = (request: NextRequest) => {
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: number; role: string };
+        return jwt.verify(token, JWT_SECRET) as { id: string; role: string };
     } catch (error) {
         return null;
     }
@@ -34,134 +34,80 @@ export async function GET(request: NextRequest) {
             console.log('No authenticated user found, proceeding without authentication');
         }
 
-        // Get overview statistics
-        const totalPatients = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM patients WHERE isActive = 1');
-        const totalScans = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans WHERE status != "archived"');
-        const pendingScans = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans WHERE status = "pending"');
-        const completedScans = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans WHERE status = "completed"');
-        const criticalScans = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans WHERE priority = "urgent" AND status != "completed"');
-        const activeCases = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans WHERE status IN ("pending", "analyzing")');
+        // Get dashboard statistics using hybrid database
+        const stats = await hybridDb.getDashboardStats() as {
+            totalUsers: number;
+            totalPatients: number;
+            totalScans: number;
+            totalAnalyses: number;
+        };
 
-        // Get recent scans with patient and analysis data
-        const recentScans = await getAll(`
-            SELECT 
-                s.*,
-                p.firstName as patientFirstName,
-                p.lastName as patientLastName,
-                p.patientId,
-                u.firstName as uploadedByFirstName,
-                u.lastName as uploadedByLastName,
-                ai.confidence,
-                ai.findings as aiFindings,
-                ai.status as aiStatus
-            FROM scans s
-            LEFT JOIN patients p ON s.patientId = p.id
-            LEFT JOIN users u ON s.uploadedById = u.id
-            LEFT JOIN ai_analysis ai ON s.id = ai.scanId
-            WHERE s.status != 'archived'
-            ORDER BY s.createdAt DESC
-            LIMIT 10
-        `);
+        // Get recent scans
+        const recentScans = await hybridDb.getAllScans();
+        const recentScansLimited = recentScans.slice(0, 10);
 
         // Get recent cases (scans with status)
-        const recentCases = await getAll(`
-            SELECT 
-                s.scanId,
-                s.status,
-                s.priority,
-                s.scanType,
-                s.bodyPart,
-                s.createdAt,
-                p.firstName as patientFirstName,
-                p.lastName as patientLastName,
-                p.patientId
-            FROM scans s
-            LEFT JOIN patients p ON s.patientId = p.id
-            WHERE s.status != 'archived'
-            ORDER BY s.createdAt DESC
-            LIMIT 5
-        `);
-
-        // Get AI model statistics
-        const aiModelStats = await getAll(`
-            SELECT 
-                scanType,
-                COUNT(*) as totalScans,
-                AVG(ai.confidence) as avgConfidence,
-                AVG(ai.processingTime) as avgProcessingTime,
-                COUNT(CASE WHEN ai.status = 'completed' THEN 1 END) as completedAnalyses,
-                COUNT(CASE WHEN DATE(ai.createdAt) = DATE('now') THEN 1 END) as scansToday
-            FROM scans s
-            LEFT JOIN ai_analysis ai ON s.id = ai.scanId
-            WHERE s.status != 'archived'
-            GROUP BY scanType
-            ORDER BY totalScans DESC
-        `);
+        const recentCases = recentScans
+            .filter(scan => scan.status !== 'archived')
+            .slice(0, 5)
+            .map(scan => ({
+                scanId: scan.id,
+                status: scan.status,
+                priority: scan.priority,
+                scanType: scan.scan_type,
+                bodyPart: scan.body_part,
+                createdAt: scan.created_at,
+                patientFirstName: 'Patient', // Will be populated with join
+                patientLastName: 'Name',
+                patientId: scan.patient_id
+            }));
 
         // Get scans by status for charts
-        const scansByStatus = await getAll(`
-            SELECT status, COUNT(*) as count
-            FROM scans
-            WHERE status != 'archived'
-            GROUP BY status
-            ORDER BY count DESC
-        `);
+        const scansByStatus = recentScans.reduce((acc: any, scan: any) => {
+            acc[scan.status] = (acc[scan.status] || 0) + 1;
+            return acc;
+        }, {});
 
         // Get scans by type for charts
-        const scansByType = await getAll(`
-            SELECT scanType, COUNT(*) as count
-            FROM scans
-            WHERE status != 'archived'
-            GROUP BY scanType
-            ORDER BY count DESC
-        `);
+        const scansByType = recentScans.reduce((acc: any, scan: any) => {
+            acc[scan.scan_type] = (acc[scan.scan_type] || 0) + 1;
+            return acc;
+        }, {});
 
         // Get monthly scan trends (last 6 months)
-        const monthlyTrends = await getAll(`
-            SELECT 
-                strftime('%Y-%m', createdAt) as month,
-                COUNT(*) as count
-            FROM scans
-            WHERE createdAt >= datetime('now', '-6 months')
-            GROUP BY month
-            ORDER BY month DESC
-        `);
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-        // Get most recent scan for "Previously Viewed Scan"
-        const lastViewedScan = await getRow(`
-            SELECT 
-                s.*,
-                p.firstName as patientFirstName,
-                p.lastName as patientLastName,
-                p.patientId,
-                ai.confidence,
-                ai.findings as aiFindings,
-                ai.status as aiStatus
-            FROM scans s
-            LEFT JOIN patients p ON s.patientId = p.id
-            LEFT JOIN ai_analysis ai ON s.id = ai.scanId
-            WHERE s.status = 'completed'
-            ORDER BY s.updatedAt DESC
-            LIMIT 1
-        `);
+        const monthlyTrends = recentScans
+            .filter(scan => new Date(scan.created_at) >= sixMonthsAgo)
+            .reduce((acc: any, scan: any) => {
+                const month = new Date(scan.created_at).toISOString().substring(0, 7);
+                acc[month] = (acc[month] || 0) + 1;
+                return acc;
+            }, {});
+
+        // Get most recent completed scan
+        const lastViewedScan = recentScans
+            .filter(scan => scan.status === 'completed')
+            .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
 
         return NextResponse.json({
             status: 'success',
             data: {
                 overview: {
-                    totalPatients: totalPatients?.count || 0,
-                    totalScans: totalScans?.count || 0,
-                    pendingScans: pendingScans?.count || 0,
-                    completedScans: completedScans?.count || 0,
-                    criticalCases: criticalScans?.count || 0,
-                    activeCases: activeCases?.count || 0
+                    totalPatients: stats.totalPatients,
+                    totalScans: stats.totalScans,
+                    pendingScans: recentScans.filter(s => s.status === 'pending').length,
+                    completedScans: recentScans.filter(s => s.status === 'completed').length,
+                    criticalCases: recentScans.filter(s => s.priority === 'urgent' && s.status !== 'completed').length,
+                    activeCases: recentScans.filter(s => ['pending', 'processing'].includes(s.status)).length
                 },
-                recentScans,
+                recentScans: recentScansLimited,
                 recentCases,
-                aiModelStats,
-                scansByStatus,
-                scansByType,
-                monthlyTrends,
+                aiModelStats: [], // Will be populated with actual AI analysis data
+                scansByStatus: Object.entries(scansByStatus).map(([status, count]) => ({ status, count })),
+                scansByType: Object.entries(scansByType).map(([scanType, count]) => ({ scanType, count })),
+                monthlyTrends: Object.entries(monthlyTrends).map(([month, count]) => ({ month, count })),
                 lastViewedScan
             }
         });

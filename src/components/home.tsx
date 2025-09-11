@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from "react";
+import Image from 'next/image';
 import {
   motion,
   AnimatePresence,
@@ -948,7 +949,7 @@ function ImmersiveOverlay({ close, size, onGetStarted, modalType }: ImmersiveOve
           }}
         >
           <Logo>
-            <img src="/intellidiag.png" alt="IntelliDiag Logo" className="logo-image" />
+            <Image src="/intellidiag.png" alt="IntelliDiag Logo" width={200} height={60} className="logo-image" />
           </Logo>
           
                      <AnimatePresence mode="wait">

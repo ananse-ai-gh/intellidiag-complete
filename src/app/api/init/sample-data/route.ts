@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runQuery, getRow } from '@/lib/database';
+import { hybridDb } from '@/lib/hybridDatabase';
 import bcrypt from 'bcryptjs';
 
 export const dynamic = 'force-dynamic';
@@ -10,10 +10,10 @@ export const fetchCache = 'force-no-store';
 export async function POST(request: NextRequest) {
     try {
         // Check if sample data already exists
-        const existingPatients = await getRow('SELECT COUNT(*) as count FROM patients');
-        const existingScans = await getRow('SELECT COUNT(*) as count FROM scans');
+        const existingPatients = await hybridDb.getAllPatients();
+        const existingScans = await hybridDb.getAllScans();
 
-        if (existingPatients?.count > 0 || existingScans?.count > 0) {
+        if (existingPatients.length > 0 || existingScans.length > 0) {
             return NextResponse.json({
                 status: 'info',
                 message: 'Sample data already exists'
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
                 password: await bcrypt.hash('password123', 12),
                 firstName: 'John',
                 lastName: 'Smith',
-                role: 'doctor',
+                role: 'doctor' as const,
                 specialization: 'Cardiology'
             },
             {
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
                 password: await bcrypt.hash('password123', 12),
                 firstName: 'Sarah',
                 lastName: 'Jones',
-                role: 'radiologist',
+                role: 'radiologist' as const,
                 specialization: 'Neuroradiology'
             },
             {
@@ -43,227 +43,209 @@ export async function POST(request: NextRequest) {
                 password: await bcrypt.hash('password123', 12),
                 firstName: 'Michael',
                 lastName: 'Wilson',
-                role: 'doctor',
+                role: 'doctor' as const,
                 specialization: 'Orthopedics'
             }
         ];
 
-        const userIds: number[] = [];
+        const userIds: string[] = [];
         for (const user of users) {
-            const result = await runQuery(
-                'INSERT INTO users (email, password, firstName, lastName, role, specialization) VALUES (?, ?, ?, ?, ?, ?)',
-                [user.email, user.password, user.firstName, user.lastName, user.role, user.specialization]
-            );
-            userIds.push(result.id);
+            const createdUser = await hybridDb.createUser({
+                email: user.email,
+                first_name: user.firstName,
+                last_name: user.lastName,
+                role: user.role,
+                password: user.password,
+                specialization: user.specialization,
+                isActive: true
+            });
+            userIds.push(createdUser.id);
         }
 
         // Create sample patients
         const patients = [
             {
-                patientId: 'P001',
                 firstName: 'Emma',
                 lastName: 'Johnson',
                 dateOfBirth: '1985-03-15',
-                gender: 'female',
-                contactNumber: '+1234567890',
+                gender: 'female' as const,
+                phone: '+1234567890',
                 email: 'emma.johnson@email.com',
-                assignedDoctorId: userIds[0]
+                address: '123 Main St, City, State'
             },
             {
-                patientId: 'P002',
                 firstName: 'David',
                 lastName: 'Brown',
                 dateOfBirth: '1978-07-22',
-                gender: 'male',
-                contactNumber: '+1234567891',
+                gender: 'male' as const,
+                phone: '+1234567891',
                 email: 'david.brown@email.com',
-                assignedDoctorId: userIds[0]
+                address: '456 Oak Ave, City, State'
             },
             {
-                patientId: 'P003',
                 firstName: 'Sarah',
                 lastName: 'Davis',
                 dateOfBirth: '1992-11-08',
-                gender: 'female',
-                contactNumber: '+1234567892',
+                gender: 'female' as const,
+                phone: '+1234567892',
                 email: 'sarah.davis@email.com',
-                assignedDoctorId: userIds[2]
+                address: '789 Pine Rd, City, State'
             },
             {
-                patientId: 'P004',
                 firstName: 'Michael',
                 lastName: 'Chen',
                 dateOfBirth: '1980-05-12',
-                gender: 'male',
-                contactNumber: '+1234567893',
+                gender: 'male' as const,
+                phone: '+1234567893',
                 email: 'michael.chen@email.com',
-                assignedDoctorId: userIds[2]
+                address: '321 Elm St, City, State'
             },
             {
-                patientId: 'P005',
                 firstName: 'Lisa',
                 lastName: 'Wilson',
                 dateOfBirth: '1988-09-30',
-                gender: 'female',
-                contactNumber: '+1234567894',
+                gender: 'female' as const,
+                phone: '+1234567894',
                 email: 'lisa.wilson@email.com',
-                assignedDoctorId: userIds[0]
+                address: '654 Maple Dr, City, State'
             }
         ];
 
-        const patientIds: number[] = [];
+        const patientIds: string[] = [];
         for (const patient of patients) {
-            const result = await runQuery(
-                'INSERT INTO patients (patientId, firstName, lastName, dateOfBirth, gender, contactNumber, email, assignedDoctorId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                [patient.patientId, patient.firstName, patient.lastName, patient.dateOfBirth, patient.gender, patient.contactNumber, patient.email, patient.assignedDoctorId]
-            );
-            patientIds.push(result.id);
+            const createdPatient = await hybridDb.createPatient({
+                first_name: patient.firstName,
+                last_name: patient.lastName,
+                date_of_birth: patient.dateOfBirth,
+                gender: patient.gender,
+                phone: patient.phone,
+                email: patient.email,
+                address: patient.address,
+                medical_history: ''
+            });
+            patientIds.push(createdPatient.id);
         }
 
         // Create sample scans
         const scans = [
             {
-                scanId: 'SCAN-001',
                 patientId: patientIds[0],
                 scanType: 'X-Ray',
                 bodyPart: 'Chest',
-                scanDate: '2024-01-15',
-                uploadedById: userIds[0],
-                priority: 'medium',
-                status: 'completed',
-                notes: 'Routine chest X-ray for respiratory assessment'
+                priority: 'medium' as const,
+                status: 'completed' as const,
+                filePath: '/uploads/sample-chest-xray.jpg',
+                fileName: 'chest-xray.jpg',
+                fileSize: 1024000,
+                mimeType: 'image/jpeg',
+                createdBy: userIds[0]
             },
             {
-                scanId: 'SCAN-002',
                 patientId: patientIds[1],
                 scanType: 'MRI',
                 bodyPart: 'Brain',
-                scanDate: '2024-01-16',
-                uploadedById: userIds[1],
-                priority: 'high',
-                status: 'completed',
-                notes: 'Brain MRI for neurological evaluation'
+                priority: 'high' as const,
+                status: 'completed' as const,
+                filePath: '/uploads/sample-brain-mri.jpg',
+                fileName: 'brain-mri.jpg',
+                fileSize: 2048000,
+                mimeType: 'image/jpeg',
+                createdBy: userIds[1]
             },
             {
-                scanId: 'SCAN-003',
                 patientId: patientIds[2],
                 scanType: 'CT',
                 bodyPart: 'Spine',
-                scanDate: '2024-01-17',
-                uploadedById: userIds[2],
-                priority: 'medium',
-                status: 'analyzing',
-                notes: 'Spine CT for back pain assessment'
+                priority: 'medium' as const,
+                status: 'processing' as const,
+                filePath: '/uploads/sample-spine-ct.jpg',
+                fileName: 'spine-ct.jpg',
+                fileSize: 1536000,
+                mimeType: 'image/jpeg',
+                createdBy: userIds[2]
             },
             {
-                scanId: 'SCAN-004',
                 patientId: patientIds[3],
                 scanType: 'X-Ray',
                 bodyPart: 'Knee',
-                scanDate: '2024-01-18',
-                uploadedById: userIds[2],
-                priority: 'low',
-                status: 'pending',
-                notes: 'Knee X-ray for injury evaluation'
+                priority: 'low' as const,
+                status: 'pending' as const,
+                filePath: '/uploads/sample-knee-xray.jpg',
+                fileName: 'knee-xray.jpg',
+                fileSize: 768000,
+                mimeType: 'image/jpeg',
+                createdBy: userIds[2]
             },
             {
-                scanId: 'SCAN-005',
                 patientId: patientIds[4],
                 scanType: 'Ultrasound',
                 bodyPart: 'Abdomen',
-                scanDate: '2024-01-19',
-                uploadedById: userIds[0],
-                priority: 'urgent',
-                status: 'pending',
-                notes: 'Abdominal ultrasound for pain assessment'
-            },
-            {
-                scanId: 'SCAN-006',
-                patientId: patientIds[0],
-                scanType: 'CT',
-                bodyPart: 'Chest',
-                scanDate: '2024-01-20',
-                uploadedById: userIds[0],
-                priority: 'high',
-                status: 'completed',
-                notes: 'Chest CT for detailed lung assessment'
-            },
-            {
-                scanId: 'SCAN-007',
-                patientId: patientIds[1],
-                scanType: 'MRI',
-                bodyPart: 'Spine',
-                scanDate: '2024-01-21',
-                uploadedById: userIds[1],
-                priority: 'medium',
-                status: 'analyzing',
-                notes: 'Spine MRI for detailed evaluation'
+                priority: 'urgent' as const,
+                status: 'pending' as const,
+                filePath: '/uploads/sample-abdomen-ultrasound.jpg',
+                fileName: 'abdomen-ultrasound.jpg',
+                fileSize: 1280000,
+                mimeType: 'image/jpeg',
+                createdBy: userIds[0]
             }
         ];
 
-        const scanIds: number[] = [];
+        const scanIds: string[] = [];
         for (const scan of scans) {
-            const result = await runQuery(
-                'INSERT INTO scans (scanId, patientId, scanType, bodyPart, scanDate, uploadedById, priority, status, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [scan.scanId, scan.patientId, scan.scanType, scan.bodyPart, scan.scanDate, scan.uploadedById, scan.priority, scan.status, scan.notes]
-            );
-            scanIds.push(result.id);
+            const createdScan = await hybridDb.createScan({
+                patient_id: scan.patientId,
+                scan_type: scan.scanType,
+                body_part: scan.bodyPart,
+                priority: scan.priority,
+                status: scan.status,
+                file_path: scan.filePath,
+                file_name: scan.fileName,
+                file_size: scan.fileSize,
+                mime_type: scan.mimeType,
+                created_by: scan.createdBy
+            });
+            scanIds.push(createdScan.id);
         }
 
         // Create sample AI analysis
         const aiAnalyses = [
             {
                 scanId: scanIds[0],
-                status: 'completed',
+                analysisType: 'chest_xray',
+                status: 'completed' as const,
                 confidence: 94.5,
-                findings: 'Normal cardiac silhouette, clear lung fields, no evidence of pneumonia or pleural effusion',
-                recommendations: 'No immediate intervention required. Follow up in 6 months for routine assessment.',
-                processingTime: 2300,
-                modelVersion: 'v2.1'
+                result: {
+                    findings: 'Normal cardiac silhouette, clear lung fields, no evidence of pneumonia or pleural effusion',
+                    recommendations: 'No immediate intervention required. Follow up in 6 months for routine assessment.'
+                }
             },
             {
                 scanId: scanIds[1],
-                status: 'completed',
+                analysisType: 'brain_mri',
+                status: 'completed' as const,
                 confidence: 91.2,
-                findings: 'Normal brain parenchyma, no mass lesions or hemorrhage detected',
-                recommendations: 'Normal brain MRI. Continue current treatment plan.',
-                processingTime: 4700,
-                modelVersion: 'v2.1'
+                result: {
+                    findings: 'Normal brain parenchyma, no mass lesions or hemorrhage detected',
+                    recommendations: 'Normal brain MRI. Continue current treatment plan.'
+                }
             },
             {
                 scanId: scanIds[2],
-                status: 'processing',
+                analysisType: 'spine_ct',
+                status: 'processing' as const,
                 confidence: 0,
-                findings: '',
-                recommendations: '',
-                processingTime: 0,
-                modelVersion: 'v2.1'
-            },
-            {
-                scanId: scanIds[5],
-                status: 'completed',
-                confidence: 88.7,
-                findings: 'Mild emphysematous changes in upper lobes, no acute findings',
-                recommendations: 'Consider pulmonary function tests. Smoking cessation counseling recommended.',
-                processingTime: 3100,
-                modelVersion: 'v2.1'
-            },
-            {
-                scanId: scanIds[6],
-                status: 'processing',
-                confidence: 0,
-                findings: '',
-                recommendations: '',
-                processingTime: 0,
-                modelVersion: 'v2.1'
+                result: {}
             }
         ];
 
         for (const analysis of aiAnalyses) {
-            await runQuery(
-                'INSERT INTO ai_analysis (scanId, status, confidence, findings, recommendations, processingTime, modelVersion) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [analysis.scanId, analysis.status, analysis.confidence, analysis.findings, analysis.recommendations, analysis.processingTime, analysis.modelVersion]
-            );
+            await hybridDb.createAnalysis({
+                scan_id: analysis.scanId,
+                analysis_type: analysis.analysisType,
+                status: analysis.status,
+                confidence: analysis.confidence,
+                result: analysis.result
+            });
         }
 
         return NextResponse.json({

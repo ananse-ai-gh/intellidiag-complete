@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRow, runQuery } from '@/lib/database';
-import { verifyToken } from '@/lib/auth';
+import { hybridDb } from '@/lib/hybridDatabase';
+import jwt from 'jsonwebtoken';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { aiAnalysisService } from '@/services/aiAnalysisService';
@@ -8,6 +8,22 @@ import { aiAnalysisService } from '@/services/aiAnalysisService';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
+
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+
+// Helper function to verify JWT token
+const verifyToken = (request: NextRequest) => {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return null;
+    }
+    const token = authHeader.substring(7);
+    try {
+        return jwt.verify(token, JWT_SECRET) as { id: string };
+    } catch (error) {
+        return null;
+    }
+};
 
 // POST /api/scans/[id]/analyze - Start AI analysis for a scan
 export async function POST(
@@ -26,11 +42,8 @@ export async function POST(
 
         const scanId = params.id;
 
-        // Check if scan exists (try both id and scanId)
-        let scan = await getRow('SELECT * FROM scans WHERE id = ?', [scanId]);
-        if (!scan) {
-            scan = await getRow('SELECT * FROM scans WHERE scanId = ?', [scanId]);
-        }
+        // Check if scan exists
+        const scan = await hybridDb.getScanById(scanId);
 
         if (!scan) {
             return NextResponse.json(
@@ -39,47 +52,36 @@ export async function POST(
             );
         }
 
-        // Use the correct ID for database operations
-        const dbId = scan.id;
-
-        // Get scan image
-        const scanImage = await getRow('SELECT * FROM scan_images WHERE scanId = ?', [dbId]);
-        if (!scanImage) {
-            return NextResponse.json(
-                { status: 'error', message: 'Scan image not found' },
-                { status: 404 }
-            );
-        }
-
         // Update scan status to analyzing
-        await runQuery(
-            'UPDATE scans SET status = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-            ['analyzing', dbId]
-        );
+        await hybridDb.updateScan(scanId, {
+            status: 'processing'
+        });
 
         // Update or create AI analysis record
-        const existingAnalysis = await getRow('SELECT * FROM ai_analysis WHERE scanId = ?', [dbId]);
-        if (existingAnalysis) {
-            await runQuery(
-                'UPDATE ai_analysis SET status = ?, updatedAt = CURRENT_TIMESTAMP WHERE scanId = ?',
-                ['processing', dbId]
-            );
+        const existingAnalyses = await hybridDb.getAnalysesByScanId(scanId);
+        if (existingAnalyses.length > 0) {
+            await hybridDb.updateAnalysis(existingAnalyses[0].id, {
+                status: 'processing'
+            });
         } else {
-            await runQuery(
-                'INSERT INTO ai_analysis (scanId, status, createdAt, updatedAt) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
-                [dbId, 'processing']
-            );
+            await hybridDb.createAnalysis({
+                scan_id: scanId,
+                analysis_type: 'ai_analysis',
+                status: 'processing',
+                confidence: 0,
+                result: {}
+            });
         }
 
         // Start AI analysis in background
-        processAnalysisInBackground(dbId, scanImage.url, scan.scanType, scan.bodyPart);
+        processAnalysisInBackground(scanId, scan.file_path, scan.scan_type, scan.body_part);
 
         return NextResponse.json({
             status: 'success',
             message: 'AI analysis started successfully',
             data: {
                 scanId,
-                status: 'analyzing',
+                status: 'processing',
                 estimatedTime: '30-60 seconds'
             }
         });
@@ -98,7 +100,7 @@ export async function POST(
 }
 
 // Background processing function
-async function processAnalysisInBackground(scanId: number, imagePath: string, scanType: string, bodyPart: string) {
+async function processAnalysisInBackground(scanId: string, imagePath: string, scanType: string, bodyPart: string) {
     try {
         const startTime = Date.now();
 
@@ -122,32 +124,22 @@ async function processAnalysisInBackground(scanId: number, imagePath: string, sc
         const processingTime = Date.now() - startTime;
 
         // Update scan status to completed
-        await runQuery(
-            'UPDATE scans SET status = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-            ['completed', scanId]
-        );
+        await hybridDb.updateScan(scanId, {
+            status: 'completed'
+        });
 
         // Update AI analysis with results
-        await runQuery(
-            `UPDATE ai_analysis SET 
-                status = ?, 
-                confidence = ?, 
-                findings = ?, 
-                recommendations = ?,
-                processingTime = ?,
-                modelVersion = ?,
-                updatedAt = CURRENT_TIMESTAMP 
-            WHERE scanId = ?`,
-            [
-                'completed',
-                analysisResult?.confidence || 0,
-                analysisResult?.findings || JSON.stringify(analysisResult),
-                llmReport?.report || analysisResult?.recommendations || '',
-                processingTime,
-                'v1.0',
-                scanId
-            ]
-        );
+        const analyses = await hybridDb.getAnalysesByScanId(scanId);
+        if (analyses.length > 0) {
+            await hybridDb.updateAnalysis(analyses[0].id, {
+                status: 'completed',
+                confidence: analysisResult?.confidence || 0,
+                result: {
+                    findings: analysisResult?.findings || JSON.stringify(analysisResult),
+                    recommendations: llmReport?.report || analysisResult?.recommendations || ''
+                }
+            });
+        }
 
         console.log(`Analysis completed for scan ${scanId} in ${processingTime}ms`);
 
@@ -155,15 +147,16 @@ async function processAnalysisInBackground(scanId: number, imagePath: string, sc
         console.error(`Error in background analysis for scan ${scanId}:`, error);
 
         // Update scan status to failed
-        await runQuery(
-            'UPDATE scans SET status = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-            ['failed', scanId]
-        );
+        await hybridDb.updateScan(scanId, {
+            status: 'failed'
+        });
 
         // Update AI analysis status to failed
-        await runQuery(
-            'UPDATE ai_analysis SET status = ?, updatedAt = CURRENT_TIMESTAMP WHERE scanId = ?',
-            ['failed', scanId]
-        );
+        const analyses = await hybridDb.getAnalysesByScanId(scanId);
+        if (analyses.length > 0) {
+            await hybridDb.updateAnalysis(analyses[0].id, {
+                status: 'failed'
+            });
+        }
     }
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { getRow, runQuery } from '@/lib/database';
+import { supabaseDb } from '@/lib/supabaseDatabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -10,7 +10,7 @@ export const fetchCache = 'force-no-store';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
 // Generate JWT token
-const generateToken = (id: number) => {
+const generateToken = (id: string) => {
     return jwt.sign({ id }, JWT_SECRET, {
         expiresIn: '7d'
     });
@@ -30,18 +30,9 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if user exists and password is correct
-        const user = await getRow<{
-            id: number;
-            email: string;
-            password: string;
-            firstName: string;
-            lastName: string;
-            role: string;
-            isActive: boolean;
-            [key: string]: any;
-        }>('SELECT * FROM users WHERE email = ?', [email]);
+        const user = await supabaseDb.getUserByEmail(email);
 
-        if (!user || !(await bcrypt.compare(password, user.password))) {
+        if (!user || !(await bcrypt.compare(password, user.password || ''))) {
             return NextResponse.json(
                 { status: 'error', message: 'Incorrect email or password' },
                 { status: 401 }
@@ -57,18 +48,25 @@ export async function POST(request: NextRequest) {
         }
 
         // Update last login
-        await runQuery('UPDATE users SET lastLogin = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+        await supabaseDb.updateUser(user.id, {
+            lastLogin: new Date().toISOString()
+        });
 
-        // Generate token
+        // Generate JWT token
         const token = generateToken(user.id);
 
-        // Remove password from response
-        const { password: _, ...userWithoutPassword } = user;
-
+        // Return user data and token
         return NextResponse.json({
             status: 'success',
+            message: 'Login successful',
             data: {
-                user: userWithoutPassword,
+                user: {
+                    id: user.id,
+                    email: user.email,
+                    firstName: user.first_name,
+                    lastName: user.last_name,
+                    role: user.role
+                },
                 token
             }
         });
@@ -76,7 +74,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('Login error:', error);
         return NextResponse.json(
-            { status: 'error', message: 'Error during login' },
+            { status: 'error', message: 'Internal server error' },
             { status: 500 }
         );
     }

@@ -1,8 +1,8 @@
-import { runQuery, getRow, getAll } from '@/lib/database';
+import { hybridDb } from '@/lib/hybridDatabase';
 import { aiAnalysisService } from '@/services/aiAnalysisService';
 
 export interface QueueItem {
-    id: number;
+    id: string;
     scanId: string;
     scanType: string;
     priority: number;
@@ -42,27 +42,17 @@ class ScanQueueManager {
                 this.startProcessing();
             }
 
-            const priorityLevel = this.getPriorityLevel(priority);
-            const queueId = this.generateQueueId();
-
             // Update scan status to queued
-            await runQuery(
-                `UPDATE scans SET 
-          status = 'queued', 
-          queue_position = (SELECT COALESCE(MAX(queue_position), 0) + 1 FROM scans WHERE status = 'queued'),
-          queue_timestamp = CURRENT_TIMESTAMP,
-          priority_level = ?,
-          queue_id = ?,
-          updatedAt = CURRENT_TIMESTAMP
-        WHERE scanId = ?`,
-                [priorityLevel, queueId, scanId]
-            );
+            await hybridDb.updateScan(scanId, {
+                status: 'pending',
+                priority: priority
+            });
 
             console.log(`✅ Scan ${scanId} added to queue with priority ${priority}`);
             return true;
         } catch (error) {
             console.error(`❌ Error adding scan ${scanId} to queue:`, error);
-            await this.updateScanStatus(scanId, 'queue_failed', error as string);
+            await this.updateScanStatus(scanId, 'failed', error as string);
             return false;
         }
     }
@@ -103,20 +93,15 @@ class ScanQueueManager {
 
             console.log(`🔄 Processing scan ${nextItem.scanId} (${nextItem.scanType})`);
 
-            // Update status to queue_processing
-            await this.updateScanStatus(nextItem.scanId, 'queue_processing');
-
-            // Determine AI processing type based on scan type
-            const aiProcessingType = this.getAIProcessingType(nextItem.scanType);
-            await this.updateScanStatus(nextItem.scanId, aiProcessingType);
+            // Update status to processing
+            await this.updateScanStatus(nextItem.scanId, 'processing');
 
             // Process the scan
             const result = await this.processScan(nextItem);
 
             if (result.success) {
                 // Update to completed status
-                const finalStatus = this.getFinalStatus(nextItem.scanType, result.data);
-                await this.updateScanStatus(nextItem.scanId, finalStatus, undefined, result.processingTime);
+                await this.updateScanStatus(nextItem.scanId, 'completed', undefined, result.processingTime);
                 console.log(`✅ Scan ${nextItem.scanId} completed successfully`);
             } else {
                 // Handle failure
@@ -135,16 +120,37 @@ class ScanQueueManager {
      */
     private async getNextQueueItem(): Promise<QueueItem | null> {
         try {
-            const result = await getRow(
-                `SELECT id, scanId, scanType, priority_level as priority, status, retry_count as retryCount, 
-                createdAt, queue_position as queuePosition
-         FROM scans 
-         WHERE status = 'queued' 
-         ORDER BY priority_level DESC, queue_position ASC, createdAt ASC 
-         LIMIT 1`
-            );
+            const allScans = await hybridDb.getAllScans();
+            const queuedScans = allScans.filter(scan => scan.status === 'pending');
 
-            return result || null;
+            if (queuedScans.length === 0) {
+                return null;
+            }
+
+            // Sort by priority and creation time
+            queuedScans.sort((a, b) => {
+                const priorityOrder = { 'urgent': 4, 'high': 3, 'medium': 2, 'low': 1 };
+                const aPriority = priorityOrder[a.priority] || 2;
+                const bPriority = priorityOrder[b.priority] || 2;
+
+                if (aPriority !== bPriority) {
+                    return bPriority - aPriority; // Higher priority first
+                }
+
+                return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            });
+
+            const scan = queuedScans[0];
+            return {
+                id: scan.id,
+                scanId: scan.id,
+                scanType: scan.scan_type,
+                priority: 2, // Default priority
+                status: scan.status,
+                retryCount: 0,
+                createdAt: scan.created_at,
+                queuePosition: 1
+            };
         } catch (error) {
             console.error('❌ Error getting next queue item:', error);
             return null;
@@ -168,7 +174,7 @@ class ScanQueueManager {
             const aiResult = await this.processWithAIService(item.scanType, scanImage);
 
             // Generate LLM report
-            await this.updateScanStatus(item.scanId, 'report_generating');
+            await this.updateScanStatus(item.scanId, 'processing');
             const llmReport = await this.generateLLMReport(item.scanId, aiResult);
 
             const processingTime = Date.now() - startTime;
@@ -211,15 +217,17 @@ class ScanQueueManager {
             const report = await aiAnalysisService.generateLLMReport(aiResult);
 
             // Update AI analysis table
-            await runQuery(
-                `UPDATE ai_analysis SET 
-          status = 'completed',
-          findings = ?,
-          confidence = ?,
-          updatedAt = CURRENT_TIMESTAMP
-        WHERE scanId = (SELECT id FROM scans WHERE scanId = ?)`,
-                [JSON.stringify(report), aiResult.confidence || 0, scanId]
-            );
+            const analyses = await hybridDb.getAnalysesByScanId(scanId);
+            if (analyses.length > 0) {
+                await hybridDb.updateAnalysis(analyses[0].id, {
+                    status: 'completed',
+                    confidence: aiResult.confidence || 0,
+                    result: {
+                        findings: JSON.stringify(report),
+                        recommendations: report.recommendations || ''
+                    }
+                });
+            }
 
             return report;
         } catch (error) {
@@ -235,15 +243,7 @@ class ScanQueueManager {
 
         if (newRetryCount <= this.MAX_RETRIES) {
             // Retry
-            await runQuery(
-                `UPDATE scans SET 
-          retry_count = ?,
-          last_error_message = ?,
-          status = 'queued',
-          updatedAt = CURRENT_TIMESTAMP
-        WHERE scanId = ?`,
-                [newRetryCount, error, item.scanId]
-            );
+            await this.updateScanStatus(item.scanId, 'pending', error);
             console.log(`🔄 Retrying scan ${item.scanId} (attempt ${newRetryCount}/${this.MAX_RETRIES})`);
         } else {
             // Max retries reached
@@ -257,37 +257,9 @@ class ScanQueueManager {
      */
     private async updateScanStatus(scanId: string, status: string, errorMessage?: string, processingTime?: number): Promise<void> {
         try {
-            const updateFields = [
-                `status = ?`,
-                `updatedAt = CURRENT_TIMESTAMP`
-            ];
-
-            const params = [status];
-
-            if (errorMessage) {
-                updateFields.push(`last_error_message = ?`);
-                params.push(errorMessage);
-            }
-
-            if (processingTime) {
-                updateFields.push(`processing_duration_ms = ?`);
-                params.push(processingTime.toString());
-            }
-
-            if (status.startsWith('ai_processing')) {
-                updateFields.push(`processing_start_time = CURRENT_TIMESTAMP`);
-            }
-
-            if (status.includes('completed') || status === 'failed') {
-                updateFields.push(`processing_end_time = CURRENT_TIMESTAMP`);
-            }
-
-            params.push(scanId);
-
-            await runQuery(
-                `UPDATE scans SET ${updateFields.join(', ')} WHERE scanId = ?`,
-                params
-            );
+            await hybridDb.updateScan(scanId, {
+                status: status as 'pending' | 'processing' | 'completed' | 'failed'
+            });
         } catch (error) {
             console.error(`❌ Error updating scan status for ${scanId}:`, error);
         }
@@ -298,21 +270,15 @@ class ScanQueueManager {
      */
     private async getScanImage(scanId: string): Promise<File | null> {
         try {
-            const scan = await getRow(
-                `SELECT s.*, si.url FROM scans s 
-         LEFT JOIN scan_images si ON s.id = si.scanId 
-         WHERE s.scanId = ?`,
-                [scanId]
-            );
-
-            if (!scan || !scan.url) {
+            const scan = await hybridDb.getScanById(scanId);
+            if (!scan || !scan.file_path) {
                 return null;
             }
 
             // Convert image path to File object
-            const response = await fetch(`/uploads/${scan.url}`);
+            const response = await fetch(scan.file_path);
             const blob = await response.blob();
-            return new File([blob], scan.url, { type: 'image/jpeg' });
+            return new File([blob], scan.file_name, { type: scan.mime_type });
         } catch (error) {
             console.error(`❌ Error getting scan image for ${scanId}:`, error);
             return null;
@@ -373,20 +339,17 @@ class ScanQueueManager {
      */
     async getQueueStats(): Promise<any> {
         try {
-            const stats = await getAll(`
-        SELECT 
-          status,
-          COUNT(*) as count,
-          AVG(priority_level) as avg_priority,
-          MIN(queue_position) as min_position,
-          MAX(queue_position) as max_position
-        FROM scans 
-        WHERE status IN ('queued', 'queue_processing', 'ai_processing', 'ai_processing_brain', 
-                        'ai_processing_breast', 'ai_processing_lung', 'ai_processing_mri_ct', 'ai_processing_ct_mri')
-        GROUP BY status
-      `);
+            const allScans = await hybridDb.getAllScans();
+            const queuedScans = allScans.filter(scan =>
+                ['pending', 'processing'].includes(scan.status)
+            );
 
-            return stats;
+            return queuedScans.map(scan => ({
+                status: scan.status,
+                count: 1,
+                scanType: scan.scan_type,
+                priority: scan.priority
+            }));
         } catch (error) {
             console.error('❌ Error getting queue stats:', error);
             return [];

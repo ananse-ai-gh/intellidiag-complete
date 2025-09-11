@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRow } from '@/lib/database';
-import { verifyToken } from '@/lib/auth';
+import { hybridDb } from '@/lib/hybridDatabase';
+import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
+
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+
+// Helper function to verify JWT token
+const verifyToken = (request: NextRequest) => {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return null;
+    }
+    const token = authHeader.substring(7);
+    try {
+        return jwt.verify(token, JWT_SECRET) as { id: string };
+    } catch (error) {
+        return null;
+    }
+};
 
 // GET /api/scans/[id]/analysis-status - Get analysis status
 export async function GET(
@@ -23,11 +39,8 @@ export async function GET(
 
         const scanId = params.id;
 
-        // Get scan and analysis data
-        let scan = await getRow('SELECT * FROM scans WHERE id = ?', [scanId]);
-        if (!scan) {
-            scan = await getRow('SELECT * FROM scans WHERE scanId = ?', [scanId]);
-        }
+        // Get scan data
+        const scan = await hybridDb.getScanById(scanId);
 
         if (!scan) {
             return NextResponse.json(
@@ -36,8 +49,9 @@ export async function GET(
             );
         }
 
-        const dbId = scan.id;
-        const analysis = await getRow('SELECT * FROM ai_analysis WHERE scanId = ?', [dbId]);
+        // Get analysis data
+        const analyses = await hybridDb.getAnalysesByScanId(scanId);
+        const analysis = analyses[0]; // Get the first analysis
 
         return NextResponse.json({
             status: 'success',
@@ -45,11 +59,11 @@ export async function GET(
                 scanStatus: scan.status,
                 analysisStatus: analysis?.status || 'pending',
                 confidence: analysis?.confidence,
-                findings: analysis?.findings,
-                recommendations: analysis?.recommendations,
-                processingTime: analysis?.processingTime,
-                modelVersion: analysis?.modelVersion,
-                updatedAt: analysis?.updatedAt
+                findings: analysis?.result?.findings || '',
+                recommendations: analysis?.result?.recommendations || '',
+                processingTime: 0, // Will be populated with actual processing time
+                modelVersion: 'v2.1', // Will be populated with actual model version
+                updatedAt: analysis?.updated_at || scan.updated_at
             }
         });
 

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { runQuery, getRow } from '@/lib/database';
+import { hybridDb } from '@/lib/hybridDatabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
+
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
 // POST /api/auth/register
 export async function POST(request: NextRequest) {
@@ -22,7 +24,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if user already exists
-        const existingUser = await getRow('SELECT id FROM users WHERE email = ?', [email]);
+        const existingUser = await hybridDb.getUserByEmail(email);
         if (existingUser) {
             return NextResponse.json(
                 { status: 'error', message: 'User with this email already exists' },
@@ -34,44 +36,40 @@ export async function POST(request: NextRequest) {
         const hashedPassword = await bcrypt.hash(password, 12);
 
         // Create new user
-        const result = await runQuery(
-            'INSERT INTO users (email, password, firstName, lastName, role, specialization, licenseNumber) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [email, hashedPassword, firstName, lastName, role, specialization, licenseNumber]
-        );
-
-        // Get the created user
-        const user = await getRow<{
-            id: number;
-            email: string;
-            firstName: string;
-            lastName: string;
-            role: string;
-            specialization?: string;
-            licenseNumber?: string;
-            isActive: boolean;
-            createdAt: string;
-        }>(
-            'SELECT id, email, firstName, lastName, role, specialization, licenseNumber, isActive, createdAt FROM users WHERE id = ?',
-            [result.id]
-        );
-
-        if (!user) {
-            return NextResponse.json(
-                { status: 'error', message: 'Error retrieving created user' },
-                { status: 500 }
-            );
-        }
+        const user = await hybridDb.createUser({
+            email,
+            first_name: firstName,
+            last_name: lastName,
+            role: role || 'patient',
+            password: hashedPassword,
+            specialization,
+            licenseNumber,
+            isActive: true
+        });
 
         // Generate JWT token
         const token = jwt.sign(
-            { userId: user.id, email: user.email, role: user.role },
-            process.env.JWT_SECRET || 'your-secret-key',
+            { id: user.id, email: user.email, role: user.role },
+            JWT_SECRET,
             { expiresIn: '7d' }
         );
 
         return NextResponse.json({
             status: 'success',
-            data: { user, token }
+            data: {
+                user: {
+                    id: user.id,
+                    email: user.email,
+                    firstName: user.first_name,
+                    lastName: user.last_name,
+                    role: user.role,
+                    specialization: user.specialization,
+                    licenseNumber: user.licenseNumber,
+                    isActive: user.isActive,
+                    createdAt: user.created_at
+                },
+                token
+            }
         }, { status: 201 });
 
     } catch (error) {

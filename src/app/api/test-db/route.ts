@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRow, getAll } from '@/lib/database';
+import { hybridDb } from '@/lib/hybridDatabase';
 import axios from 'axios';
 
 export const dynamic = 'force-dynamic';
@@ -11,10 +11,13 @@ export async function GET(request: NextRequest) {
     try {
         console.log('Testing database connection...');
 
-        // Test basic database queries
-        const patientCount = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM patients');
-        const scanCount = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans');
-        const userCount = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM users');
+        // Test basic database queries using hybrid database
+        const stats = await hybridDb.getDashboardStats() as {
+            totalUsers: number;
+            totalPatients: number;
+            totalScans: number;
+            totalAnalyses: number;
+        };
 
         console.log('Database queries successful');
 
@@ -22,9 +25,10 @@ export async function GET(request: NextRequest) {
             status: 'success',
             message: 'Database connection successful',
             data: {
-                patients: patientCount?.count || 0,
-                scans: scanCount?.count || 0,
-                users: userCount?.count || 0
+                patients: stats.totalPatients,
+                scans: stats.totalScans,
+                users: stats.totalUsers,
+                analyses: stats.totalAnalyses
             }
         });
 

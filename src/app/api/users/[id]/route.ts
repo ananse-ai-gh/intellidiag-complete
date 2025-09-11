@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRow, runQuery } from '@/lib/database';
+import { hybridDb } from '@/lib/hybridDatabase';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
 // Helper function to verify JWT token
 const verifyToken = (request: NextRequest) => {
@@ -17,7 +17,7 @@ const verifyToken = (request: NextRequest) => {
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: number; role: string };
+        return jwt.verify(token, JWT_SECRET) as { id: string; role: string };
     } catch (error) {
         return null;
     }
@@ -37,8 +37,8 @@ export async function GET(
             );
         }
 
-        const userId = parseInt(params.id);
-        if (isNaN(userId)) {
+        const userId = params.id;
+        if (!userId) {
             return NextResponse.json(
                 { status: 'error', message: 'Invalid user ID' },
                 { status: 400 }
@@ -53,23 +53,7 @@ export async function GET(
             );
         }
 
-        const userData = await getRow<{
-            id: number;
-            email: string;
-            firstName: string;
-            lastName: string;
-            role: string;
-            specialization?: string;
-            licenseNumber?: string;
-            isActive: boolean;
-            lastLogin?: string;
-            profileImage?: string;
-            createdAt: string;
-            updatedAt: string;
-        }>(
-            'SELECT id, email, firstName, lastName, role, specialization, licenseNumber, isActive, lastLogin, profileImage, createdAt, updatedAt FROM users WHERE id = ? AND isActive = 1',
-            [userId]
-        );
+        const userData = await hybridDb.getUserById(userId);
 
         if (!userData) {
             return NextResponse.json(
@@ -80,7 +64,22 @@ export async function GET(
 
         return NextResponse.json({
             status: 'success',
-            data: { user: userData }
+            data: {
+                user: {
+                    id: userData.id,
+                    email: userData.email,
+                    firstName: userData.first_name,
+                    lastName: userData.last_name,
+                    role: userData.role,
+                    specialization: userData.specialization,
+                    licenseNumber: userData.licenseNumber,
+                    isActive: userData.isActive,
+                    lastLogin: userData.lastLogin,
+                    profileImage: userData.profileImage,
+                    createdAt: userData.created_at,
+                    updatedAt: userData.updated_at
+                }
+            }
         });
 
     } catch (error) {
@@ -106,8 +105,8 @@ export async function PUT(
             );
         }
 
-        const userId = parseInt(params.id);
-        if (isNaN(userId)) {
+        const userId = params.id;
+        if (!userId) {
             return NextResponse.json(
                 { status: 'error', message: 'Invalid user ID' },
                 { status: 400 }
@@ -134,7 +133,7 @@ export async function PUT(
         } = body;
 
         // Check if user exists
-        const existingUser = await getRow('SELECT id FROM users WHERE id = ? AND isActive = 1', [userId]);
+        const existingUser = await hybridDb.getUserById(userId);
         if (!existingUser) {
             return NextResponse.json(
                 { status: 'error', message: 'User not found' },
@@ -151,26 +150,26 @@ export async function PUT(
         }
 
         // Check if email is already taken by another user
-        const emailCheck = await getRow('SELECT id FROM users WHERE email = ? AND id != ?', [email, userId]);
-        if (emailCheck) {
+        const emailCheck = await hybridDb.getUserByEmail(email);
+        if (emailCheck && emailCheck.id !== userId) {
             return NextResponse.json(
                 { status: 'error', message: 'Email already exists' },
                 { status: 400 }
             );
         }
 
-        // Only admin can change role
+        // Prepare update data
         const updateData: any = {
-            firstName,
-            lastName,
-            email,
-            specialization,
-            licenseNumber,
-            updatedAt: 'CURRENT_TIMESTAMP'
+            first_name: firstName,
+            last_name: lastName,
+            email: email,
+            specialization: specialization,
+            licenseNumber: licenseNumber
         };
 
+        // Only admin can change role
         if (user.role === 'admin' && role) {
-            updateData.role = role;
+            updateData.role = role as 'admin' | 'doctor' | 'radiologist' | 'patient';
         }
 
         // Update password if provided
@@ -179,43 +178,27 @@ export async function PUT(
             updateData.password = hashedPassword;
         }
 
-        // Build dynamic update query
-        const updateFields = Object.keys(updateData)
-            .filter(key => key !== 'updatedAt')
-            .map(key => `${key} = ?`)
-            .join(', ');
-
-        const updateValues = Object.keys(updateData)
-            .filter(key => key !== 'updatedAt')
-            .map(key => updateData[key]);
-
-        await runQuery(
-            `UPDATE users SET ${updateFields}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`,
-            [...updateValues, userId]
-        );
-
-        // Get the updated user
-        const userData = await getRow<{
-            id: number;
-            email: string;
-            firstName: string;
-            lastName: string;
-            role: string;
-            specialization?: string;
-            licenseNumber?: string;
-            isActive: boolean;
-            lastLogin?: string;
-            profileImage?: string;
-            createdAt: string;
-            updatedAt: string;
-        }>(
-            'SELECT id, email, firstName, lastName, role, specialization, licenseNumber, isActive, lastLogin, profileImage, createdAt, updatedAt FROM users WHERE id = ?',
-            [userId]
-        );
+        // Update user
+        const updatedUser = await hybridDb.updateUser(userId, updateData);
 
         return NextResponse.json({
             status: 'success',
-            data: { user: userData }
+            data: {
+                user: {
+                    id: updatedUser.id,
+                    email: updatedUser.email,
+                    firstName: updatedUser.first_name,
+                    lastName: updatedUser.last_name,
+                    role: updatedUser.role,
+                    specialization: updatedUser.specialization,
+                    licenseNumber: updatedUser.licenseNumber,
+                    isActive: updatedUser.isActive,
+                    lastLogin: updatedUser.lastLogin,
+                    profileImage: updatedUser.profileImage,
+                    createdAt: updatedUser.created_at,
+                    updatedAt: updatedUser.updated_at
+                }
+            }
         });
 
     } catch (error) {
@@ -241,8 +224,8 @@ export async function DELETE(
             );
         }
 
-        const userId = parseInt(params.id);
-        if (isNaN(userId)) {
+        const userId = params.id;
+        if (!userId) {
             return NextResponse.json(
                 { status: 'error', message: 'Invalid user ID' },
                 { status: 400 }
@@ -266,7 +249,7 @@ export async function DELETE(
         }
 
         // Check if user exists
-        const existingUser = await getRow('SELECT id FROM users WHERE id = ? AND isActive = 1', [userId]);
+        const existingUser = await hybridDb.getUserById(userId);
         if (!existingUser) {
             return NextResponse.json(
                 { status: 'error', message: 'User not found' },
@@ -274,11 +257,10 @@ export async function DELETE(
             );
         }
 
-        // Soft delete - set isActive to 0
-        await runQuery(
-            'UPDATE users SET isActive = 0, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-            [userId]
-        );
+        // Soft delete - set isActive to false
+        await hybridDb.updateUser(userId, {
+            isActive: false
+        });
 
         return NextResponse.json({
             status: 'success',

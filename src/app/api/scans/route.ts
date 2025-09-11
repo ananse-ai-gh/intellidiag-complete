@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRow, getAll, runQuery } from '@/lib/database';
-import { verifyToken } from '@/lib/auth';
+import { hybridDb } from '@/lib/hybridDatabase';
+import jwt from 'jsonwebtoken';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { scanQueueManager } from '@/services/scanQueueManager';
@@ -8,6 +8,22 @@ import { scanQueueManager } from '@/services/scanQueueManager';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
+
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+
+// Helper function to verify JWT token
+const verifyToken = (request: NextRequest) => {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return null;
+    }
+    const token = authHeader.substring(7);
+    try {
+        return jwt.verify(token, JWT_SECRET) as { id: string };
+    } catch (error) {
+        return null;
+    }
+};
 
 // POST /api/scans - Create a new scan
 export async function POST(request: NextRequest) {
@@ -43,7 +59,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Validate patient exists
-        const patient = await getRow('SELECT id FROM patients WHERE id = ?', [patientId]);
+        const patient = await hybridDb.getPatientById(patientId);
         if (!patient) {
             return NextResponse.json(
                 { status: 'error', message: 'Patient not found' },
@@ -73,46 +89,28 @@ export async function POST(request: NextRequest) {
             await writeFile(join(uploadsDir, fileName), buffer);
         }
 
-        // Insert scan into database
-        const result = await runQuery(
-            `INSERT INTO scans (
-                scanId, patientId, scanType, bodyPart, scanDate, 
-                uploadedById, priority, status, notes, createdAt, updatedAt
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-            [
-                scanId,
-                patientId,
-                scanType,
-                bodyPart,
-                scanDate || new Date().toISOString().split('T')[0],
-                user.id,
-                priority || 'medium',
-                'uploading', // Start with uploading status
-                notes || ''
-            ]
-        );
-
-        // Save image record to database
-        if (imagePath) {
-            await runQuery(
-                'INSERT INTO scan_images (scanId, url, originalName, size) VALUES (?, ?, ?, ?)',
-                [result.id, imagePath, scanImage.name, scanImage.size]
-            );
-        }
+        // Create scan in database
+        const scan = await hybridDb.createScan({
+            patient_id: patientId,
+            scan_type: scanType,
+            body_part: bodyPart,
+            priority: priority as 'low' | 'medium' | 'high' | 'urgent' || 'medium',
+            status: 'pending',
+            file_path: imagePath,
+            file_name: scanImage.name,
+            file_size: scanImage.size,
+            mime_type: scanImage.type,
+            created_by: user.id
+        });
 
         // Create initial AI analysis record
-        await runQuery(
-            `INSERT INTO ai_analysis (
-                scanId, status, modelVersion, createdAt, updatedAt
-            ) VALUES (?, 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-            [result.id, analysisType || 'auto']
-        );
-
-        // Update status to uploaded
-        await runQuery(
-            'UPDATE scans SET status = ? WHERE id = ?',
-            ['uploaded', result.id]
-        );
+        await hybridDb.createAnalysis({
+            scan_id: scan.id,
+            analysis_type: analysisType || 'auto',
+            status: 'pending',
+            confidence: 0,
+            result: {}
+        });
 
         // Add to processing queue
         const queueSuccess = await scanQueueManager.addToQueue(scanId, scanType, priority as any);
@@ -125,17 +123,23 @@ export async function POST(request: NextRequest) {
             }, { status: 500 });
         }
 
-        // Get the created scan with patient details
-        const createdScan = await getRow(`
-            SELECT 
-                s.*,
-                p.firstName as patientFirstName,
-                p.lastName as patientLastName,
-                p.patientId as patientIdNumber
-            FROM scans s
-            JOIN patients p ON s.patientId = p.id
-            WHERE s.id = ?
-        `, [result.id]);
+        // Transform to expected format
+        const createdScan = {
+            id: scan.id,
+            scanId: scan.id,
+            patientId: scan.patient_id,
+            scanType: scan.scan_type,
+            bodyPart: scan.body_part,
+            priority: scan.priority,
+            status: scan.status,
+            notes: notes || '',
+            scanDate: scanDate || scan.created_at,
+            createdAt: scan.created_at,
+            updatedAt: scan.updated_at,
+            patientFirstName: patient.first_name,
+            patientLastName: patient.last_name,
+            patientIdNumber: patient.id
+        };
 
         return NextResponse.json({
             status: 'success',
@@ -182,63 +186,54 @@ export async function GET(request: NextRequest) {
         const scanType = searchParams.get('scanType');
         const patientId = searchParams.get('patientId');
 
-        // Build query
-        let query = `
-            SELECT 
-                s.*,
-                p.firstName as patientFirstName,
-                p.lastName as patientLastName,
-                p.patientId as patientIdNumber,
-                u.firstName as uploadedByFirstName,
-                u.lastName as uploadedByLastName,
-                aa.status as aiStatus,
-                aa.confidence,
-                aa.findings as aiFindings
-            FROM scans s
-            JOIN patients p ON s.patientId = p.id
-            JOIN users u ON s.uploadedById = u.id
-            LEFT JOIN ai_analysis aa ON s.id = aa.scanId
-        `;
+        // Get all scans
+        let allScans = await hybridDb.getAllScans();
 
-        const whereConditions = [];
-        const queryParams = [];
-
+        // Apply filters
         if (status) {
-            whereConditions.push('s.status = ?');
-            queryParams.push(status);
+            allScans = allScans.filter(scan => scan.status === status);
         }
-
         if (scanType) {
-            whereConditions.push('s.scanType = ?');
-            queryParams.push(scanType);
+            allScans = allScans.filter(scan => scan.scan_type === scanType);
         }
-
         if (patientId) {
-            whereConditions.push('s.patientId = ?');
-            queryParams.push(patientId);
+            allScans = allScans.filter(scan => scan.patient_id === patientId);
         }
 
-        if (whereConditions.length > 0) {
-            query += ' WHERE ' + whereConditions.join(' AND ');
-        }
-
-        query += ' ORDER BY s.createdAt DESC';
-
-        // Add pagination
+        // Apply pagination
         const offset = (page - 1) * limit;
-        query += ` LIMIT ? OFFSET ?`;
-        queryParams.push(limit, offset);
+        const paginatedScans = allScans.slice(offset, offset + limit);
 
-        // Execute query
-        const scans = await getAll(query, queryParams);
+        // Transform to expected format
+        const scans = await Promise.all(paginatedScans.map(async (scan) => {
+            const patient = await hybridDb.getPatientById(scan.patient_id);
+            const analyses = await hybridDb.getAnalysesByScanId(scan.id);
+            const analysis = analyses[0];
 
-        // Get total count for pagination
-        let countQuery = 'SELECT COUNT(*) as total FROM scans s';
-        if (whereConditions.length > 0) {
-            countQuery += ' WHERE ' + whereConditions.join(' AND ');
-        }
-        const totalResult = await getRow(countQuery, queryParams.slice(0, -2));
-        const total = totalResult?.total || 0;
+            return {
+                id: scan.id,
+                scanId: scan.id,
+                patientId: scan.patient_id,
+                scanType: scan.scan_type,
+                bodyPart: scan.body_part,
+                priority: scan.priority,
+                status: scan.status,
+                notes: '',
+                scanDate: scan.created_at,
+                createdAt: scan.created_at,
+                updatedAt: scan.updated_at,
+                patientFirstName: patient?.first_name || '',
+                patientLastName: patient?.last_name || '',
+                patientIdNumber: patient?.id || '',
+                uploadedByFirstName: 'User',
+                uploadedByLastName: 'Name',
+                aiStatus: analysis?.status || 'pending',
+                confidence: analysis?.confidence || 0,
+                aiFindings: analysis?.result?.findings || ''
+            };
+        }));
+
+        const total = allScans.length;
 
         return NextResponse.json({
             status: 'success',
@@ -290,34 +285,37 @@ export async function PUT(request: NextRequest) {
         }
 
         // Update scan in database
-        await runQuery(
-            `UPDATE scans SET 
-                scanType = ?, 
-                bodyPart = ?, 
-                priority = ?, 
-                notes = ?, 
-                scanDate = ?,
-                updatedAt = CURRENT_TIMESTAMP
-            WHERE scanId = ?`,
-            [scanType, bodyPart, priority, notes, scanDate, scanId]
-        );
+        const updatedScan = await hybridDb.updateScan(scanId, {
+            scan_type: scanType,
+            body_part: bodyPart,
+            priority: priority as 'low' | 'medium' | 'high' | 'urgent'
+        });
 
-        // Get the updated scan
-        const updatedScan = await getRow(`
-            SELECT 
-                s.*,
-                p.firstName as patientFirstName,
-                p.lastName as patientLastName,
-                p.patientId as patientIdNumber
-            FROM scans s
-            JOIN patients p ON s.patientId = p.id
-            WHERE s.scanId = ?
-        `, [scanId]);
+        // Get patient details
+        const patient = await hybridDb.getPatientById(updatedScan.patient_id);
+
+        // Transform to expected format
+        const scanData = {
+            id: updatedScan.id,
+            scanId: updatedScan.id,
+            patientId: updatedScan.patient_id,
+            scanType: updatedScan.scan_type,
+            bodyPart: updatedScan.body_part,
+            priority: updatedScan.priority,
+            status: updatedScan.status,
+            notes: notes || '',
+            scanDate: scanDate || updatedScan.created_at,
+            createdAt: updatedScan.created_at,
+            updatedAt: updatedScan.updated_at,
+            patientFirstName: patient?.first_name || '',
+            patientLastName: patient?.last_name || '',
+            patientIdNumber: patient?.id || ''
+        };
 
         return NextResponse.json({
             status: 'success',
             message: 'Scan updated successfully',
-            data: { scan: updatedScan }
+            data: { scan: scanData }
         });
 
     } catch (error) {

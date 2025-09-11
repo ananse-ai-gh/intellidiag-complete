@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRow, runQuery } from '@/lib/database';
+import { hybridDb } from '@/lib/hybridDatabase';
 import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
 // Helper function to verify JWT token
 const verifyToken = (request: NextRequest) => {
@@ -16,7 +16,7 @@ const verifyToken = (request: NextRequest) => {
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: number };
+        return jwt.verify(token, JWT_SECRET) as { id: string };
     } catch (error) {
         return null;
     }
@@ -36,39 +36,15 @@ export async function GET(
             );
         }
 
-        const patientId = parseInt(params.id);
-        if (isNaN(patientId)) {
+        const patientId = params.id;
+        if (!patientId) {
             return NextResponse.json(
                 { status: 'error', message: 'Invalid patient ID' },
                 { status: 400 }
             );
         }
 
-        const patient = await getRow<{
-            id: number;
-            patientId: string;
-            firstName: string;
-            lastName: string;
-            dateOfBirth: string;
-            gender: string;
-            contactNumber?: string;
-            email?: string;
-            street?: string;
-            city?: string;
-            state?: string;
-            zipCode?: string;
-            country?: string;
-            assignedDoctorId?: number;
-            isActive: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>(
-            `SELECT p.*, u.firstName as doctorFirstName, u.lastName as doctorLastName
-             FROM patients p
-             LEFT JOIN users u ON p.assignedDoctorId = u.id
-             WHERE p.id = ? AND p.isActive = 1`,
-            [patientId]
-        );
+        const patient = await hybridDb.getPatientById(patientId);
 
         if (!patient) {
             return NextResponse.json(
@@ -79,7 +55,27 @@ export async function GET(
 
         return NextResponse.json({
             status: 'success',
-            data: { patient }
+            data: {
+                patient: {
+                    id: patient.id,
+                    patientId: patient.id, // Using id as patientId for compatibility
+                    firstName: patient.first_name,
+                    lastName: patient.last_name,
+                    dateOfBirth: patient.date_of_birth,
+                    gender: patient.gender,
+                    contactNumber: patient.phone,
+                    email: patient.email,
+                    street: patient.address,
+                    city: '',
+                    state: '',
+                    zipCode: '',
+                    country: '',
+                    assignedDoctorId: null,
+                    isActive: true,
+                    createdAt: patient.created_at,
+                    updatedAt: patient.updated_at
+                }
+            }
         });
 
     } catch (error) {
@@ -105,8 +101,8 @@ export async function PUT(
             );
         }
 
-        const patientId = parseInt(params.id);
-        if (isNaN(patientId)) {
+        const patientId = params.id;
+        if (!patientId) {
             return NextResponse.json(
                 { status: 'error', message: 'Invalid patient ID' },
                 { status: 400 }
@@ -130,7 +126,7 @@ export async function PUT(
         } = body;
 
         // Check if patient exists
-        const existingPatient = await getRow('SELECT id FROM patients WHERE id = ? AND isActive = 1', [patientId]);
+        const existingPatient = await hybridDb.getPatientById(patientId);
         if (!existingPatient) {
             return NextResponse.json(
                 { status: 'error', message: 'Patient not found' },
@@ -147,47 +143,39 @@ export async function PUT(
         }
 
         // Update patient
-        await runQuery(
-            `UPDATE patients SET 
-                firstName = ?, lastName = ?, dateOfBirth = ?, gender = ?,
-                contactNumber = ?, email = ?, street = ?, city = ?, 
-                state = ?, zipCode = ?, country = ?, assignedDoctorId = ?,
-                updatedAt = CURRENT_TIMESTAMP
-             WHERE id = ?`,
-            [firstName, lastName, dateOfBirth, gender, contactNumber,
-                email, street, city, state, zipCode, country, assignedDoctorId, patientId]
-        );
-
-        // Get the updated patient
-        const patient = await getRow<{
-            id: number;
-            patientId: string;
-            firstName: string;
-            lastName: string;
-            dateOfBirth: string;
-            gender: string;
-            contactNumber?: string;
-            email?: string;
-            street?: string;
-            city?: string;
-            state?: string;
-            zipCode?: string;
-            country?: string;
-            assignedDoctorId?: number;
-            isActive: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>(
-            `SELECT p.*, u.firstName as doctorFirstName, u.lastName as doctorLastName
-             FROM patients p
-             LEFT JOIN users u ON p.assignedDoctorId = u.id
-             WHERE p.id = ?`,
-            [patientId]
-        );
+        const updatedPatient = await hybridDb.updatePatient(patientId, {
+            first_name: firstName,
+            last_name: lastName,
+            date_of_birth: dateOfBirth,
+            gender: gender as 'male' | 'female' | 'other',
+            phone: contactNumber,
+            email: email,
+            address: street
+        });
 
         return NextResponse.json({
             status: 'success',
-            data: { patient }
+            data: {
+                patient: {
+                    id: updatedPatient.id,
+                    patientId: updatedPatient.id,
+                    firstName: updatedPatient.first_name,
+                    lastName: updatedPatient.last_name,
+                    dateOfBirth: updatedPatient.date_of_birth,
+                    gender: updatedPatient.gender,
+                    contactNumber: updatedPatient.phone,
+                    email: updatedPatient.email,
+                    street: updatedPatient.address,
+                    city: '',
+                    state: '',
+                    zipCode: '',
+                    country: '',
+                    assignedDoctorId: null,
+                    isActive: true,
+                    createdAt: updatedPatient.created_at,
+                    updatedAt: updatedPatient.updated_at
+                }
+            }
         });
 
     } catch (error) {
@@ -213,8 +201,8 @@ export async function DELETE(
             );
         }
 
-        const patientId = parseInt(params.id);
-        if (isNaN(patientId)) {
+        const patientId = params.id;
+        if (!patientId) {
             return NextResponse.json(
                 { status: 'error', message: 'Invalid patient ID' },
                 { status: 400 }
@@ -222,7 +210,7 @@ export async function DELETE(
         }
 
         // Check if patient exists
-        const existingPatient = await getRow('SELECT id FROM patients WHERE id = ? AND isActive = 1', [patientId]);
+        const existingPatient = await hybridDb.getPatientById(patientId);
         if (!existingPatient) {
             return NextResponse.json(
                 { status: 'error', message: 'Patient not found' },
@@ -230,11 +218,8 @@ export async function DELETE(
             );
         }
 
-        // Soft delete - set isActive to 0
-        await runQuery(
-            'UPDATE patients SET isActive = 0, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-            [patientId]
-        );
+        // Delete patient
+        await hybridDb.deletePatient(patientId);
 
         return NextResponse.json({
             status: 'success',

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAll, runQuery, getRow } from '@/lib/database';
+import { hybridDb } from '@/lib/hybridDatabase';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
 // Helper function to verify JWT token
 const verifyToken = (request: NextRequest) => {
@@ -17,7 +17,7 @@ const verifyToken = (request: NextRequest) => {
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: number };
+        return jwt.verify(token, JWT_SECRET) as { id: string };
     } catch (error) {
         return null;
     }
@@ -39,47 +39,42 @@ export async function GET(request: NextRequest) {
         const limit = parseInt(searchParams.get('limit') || '10');
         const search = searchParams.get('search') || '';
         const role = searchParams.get('role') || '';
+
+        // Get all users
+        let allUsers = await hybridDb.getAllUsers();
+
+        // Apply filters
+        if (search) {
+            allUsers = allUsers.filter(user =>
+                user.first_name.toLowerCase().includes(search.toLowerCase()) ||
+                user.last_name.toLowerCase().includes(search.toLowerCase()) ||
+                user.email.toLowerCase().includes(search.toLowerCase())
+            );
+        }
+
+        if (role) {
+            allUsers = allUsers.filter(user => user.role === role);
+        }
+
+        // Apply pagination
         const offset = (page - 1) * limit;
+        const paginatedUsers = allUsers.slice(offset, offset + limit);
 
-        let sql = `
-            SELECT id, email, firstName, lastName, role, specialization, licenseNumber, 
-                   isActive, lastLogin, createdAt
-            FROM users
-            WHERE isActive = 1
-        `;
-        let params: any[] = [];
+        // Transform to expected format
+        const users = paginatedUsers.map(user => ({
+            id: user.id,
+            email: user.email,
+            firstName: user.first_name,
+            lastName: user.last_name,
+            role: user.role,
+            specialization: user.specialization,
+            licenseNumber: user.licenseNumber,
+            isActive: user.isActive,
+            lastLogin: user.lastLogin,
+            createdAt: user.created_at
+        }));
 
-        if (search) {
-            sql += ` AND (firstName LIKE ? OR lastName LIKE ? OR email LIKE ?)`;
-            params.push(`%${search}%`, `%${search}%`, `%${search}%`);
-        }
-
-        if (role) {
-            sql += ` AND role = ?`;
-            params.push(role);
-        }
-
-        sql += ` ORDER BY createdAt DESC LIMIT ? OFFSET ?`;
-        params.push(limit, offset);
-
-        const users = await getAll(sql, params);
-
-        // Get total count
-        let countSql = 'SELECT COUNT(*) as total FROM users WHERE isActive = 1';
-        let countParams: any[] = [];
-
-        if (search) {
-            countSql += ` AND (firstName LIKE ? OR lastName LIKE ? OR email LIKE ?)`;
-            countParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
-        }
-
-        if (role) {
-            countSql += ` AND role = ?`;
-            countParams.push(role);
-        }
-
-        const countResult = await getRow<{ total: number }>(countSql, countParams);
-        const total = countResult?.total || 0;
+        const total = allUsers.length;
 
         return NextResponse.json({
             status: 'success',
@@ -126,7 +121,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if user already exists
-        const existingUser = await getRow('SELECT id FROM users WHERE email = ?', [email]);
+        const existingUser = await hybridDb.getUserByEmail(email);
         if (existingUser) {
             return NextResponse.json(
                 { status: 'error', message: 'User with this email already exists' },
@@ -138,30 +133,32 @@ export async function POST(request: NextRequest) {
         const hashedPassword = await bcrypt.hash(password, 12);
 
         // Create new user
-        const result = await runQuery(
-            'INSERT INTO users (email, password, firstName, lastName, role, specialization, licenseNumber) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [email, hashedPassword, firstName, lastName, role, specialization, licenseNumber]
-        );
-
-        // Get the created user
-        const newUser = await getRow<{
-            id: number;
-            email: string;
-            firstName: string;
-            lastName: string;
-            role: string;
-            specialization?: string;
-            licenseNumber?: string;
-            isActive: boolean;
-            createdAt: string;
-        }>(
-            'SELECT id, email, firstName, lastName, role, specialization, licenseNumber, isActive, createdAt FROM users WHERE id = ?',
-            [result.id]
-        );
+        const newUser = await hybridDb.createUser({
+            email,
+            first_name: firstName,
+            last_name: lastName,
+            role: role as 'admin' | 'doctor' | 'radiologist' | 'patient' || 'patient',
+            password: hashedPassword,
+            specialization,
+            licenseNumber,
+            isActive: true
+        });
 
         return NextResponse.json({
             status: 'success',
-            data: { user: newUser }
+            data: {
+                user: {
+                    id: newUser.id,
+                    email: newUser.email,
+                    firstName: newUser.first_name,
+                    lastName: newUser.last_name,
+                    role: newUser.role,
+                    specialization: newUser.specialization,
+                    licenseNumber: newUser.licenseNumber,
+                    isActive: newUser.isActive,
+                    createdAt: newUser.created_at
+                }
+            }
         }, { status: 201 });
 
     } catch (error) {

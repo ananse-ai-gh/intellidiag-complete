@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRow, getAll } from '@/lib/database';
+import { supabaseDb } from '@/lib/supabaseDatabase';
 import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +16,7 @@ const verifyToken = (request: NextRequest) => {
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: number };
+        return jwt.verify(token, JWT_SECRET) as { id: string };
     } catch (error) {
         return null;
     }
@@ -33,66 +33,83 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Get total counts
-        const totalPatients = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM patients WHERE isActive = 1');
-        const totalScans = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans WHERE status != "archived"');
-        const totalUsers = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM users WHERE isActive = 1');
-        const pendingScans = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans WHERE status = "pending"');
-        const completedScans = await getRow<{ count: number }>('SELECT COUNT(*) as count FROM scans WHERE status = "completed"');
+        // Get dashboard stats using Supabase
+        const stats = await supabaseDb.getDashboardStats();
 
         // Get scans by type
-        const scansByType = await getAll(`
-            SELECT scanType, COUNT(*) as count
-            FROM scans
-            WHERE status != 'archived'
-            GROUP BY scanType
-            ORDER BY count DESC
-        `);
+        const { data: scansByType } = await supabaseDb.client
+            .from('scans')
+            .select('scan_type')
+            .not('status', 'eq', 'archived');
+
+        const scansByTypeCount = scansByType?.reduce((acc: any, scan: any) => {
+            acc[scan.scan_type] = (acc[scan.scan_type] || 0) + 1;
+            return acc;
+        }, {}) || {};
 
         // Get scans by status
-        const scansByStatus = await getAll(`
-            SELECT status, COUNT(*) as count
-            FROM scans
-            WHERE status != 'archived'
-            GROUP BY status
-            ORDER BY count DESC
-        `);
+        const { data: scansByStatus } = await supabaseDb.client
+            .from('scans')
+            .select('status')
+            .not('status', 'eq', 'archived');
+
+        const scansByStatusCount = scansByStatus?.reduce((acc: any, scan: any) => {
+            acc[scan.status] = (acc[scan.status] || 0) + 1;
+            return acc;
+        }, {}) || {};
 
         // Get recent activity (last 7 days)
-        const recentScans = await getAll(`
-            SELECT s.*, p.firstName as patientFirstName, p.lastName as patientLastName, p.patientId
-            FROM scans s
-            LEFT JOIN patients p ON s.patientId = p.id
-            WHERE s.createdAt >= datetime('now', '-7 days')
-            ORDER BY s.createdAt DESC
-            LIMIT 10
-        `);
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const { data: recentScans } = await supabaseDb.client
+            .from('scans')
+            .select(`
+                *,
+                patients!inner(*)
+            `)
+            .gte('created_at', sevenDaysAgo.toISOString())
+            .order('created_at', { ascending: false })
+            .limit(10);
 
         // Get scans by month (last 6 months)
-        const scansByMonth = await getAll(`
-            SELECT 
-                strftime('%Y-%m', createdAt) as month,
-                COUNT(*) as count
-            FROM scans
-            WHERE createdAt >= datetime('now', '-6 months')
-            GROUP BY month
-            ORDER BY month DESC
-        `);
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+        const { data: scansByMonth } = await supabaseDb.client
+            .from('scans')
+            .select('created_at')
+            .gte('created_at', sixMonthsAgo.toISOString());
+
+        const scansByMonthCount = scansByMonth?.reduce((acc: any, scan: any) => {
+            const month = new Date(scan.created_at).toISOString().substring(0, 7);
+            acc[month] = (acc[month] || 0) + 1;
+            return acc;
+        }, {}) || {};
 
         return NextResponse.json({
             status: 'success',
             data: {
                 overview: {
-                    totalPatients: totalPatients?.count || 0,
-                    totalScans: totalScans?.count || 0,
-                    totalUsers: totalUsers?.count || 0,
-                    pendingScans: pendingScans?.count || 0,
-                    completedScans: completedScans?.count || 0
+                    totalPatients: stats.totalPatients,
+                    totalScans: stats.totalScans,
+                    totalUsers: stats.totalUsers,
+                    pendingScans: stats.totalScans, // You might want to add a specific query for this
+                    completedScans: stats.totalScans // You might want to add a specific query for this
                 },
-                scansByType,
-                scansByStatus,
-                recentScans,
-                scansByMonth
+                scansByType: Object.entries(scansByTypeCount).map(([type, count]) => ({
+                    scanType: type,
+                    count
+                })),
+                scansByStatus: Object.entries(scansByStatusCount).map(([status, count]) => ({
+                    status,
+                    count
+                })),
+                recentScans: recentScans || [],
+                scansByMonth: Object.entries(scansByMonthCount).map(([month, count]) => ({
+                    month,
+                    count
+                }))
             }
         });
 

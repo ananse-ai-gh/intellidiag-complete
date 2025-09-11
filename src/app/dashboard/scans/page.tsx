@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 import ImageViewer from '@/components/ImageViewer';
@@ -439,10 +440,11 @@ export default function ScansPage() {
 
                 <ImagePreview>
                   {scan.imagePath ? (
-                    <img 
+                    <Image 
                       src={getImageUrl(scan)} 
                       alt={`Scan ${scan.scanId}`}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      fill
+                      style={{ objectFit: 'cover' }}
                     />
                   ) : (
                     <ImagePlaceholder>

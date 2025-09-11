@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from "react";
+import Image from 'next/image';
 import { FaBell, FaSignOutAlt, FaUser, FaCog, FaChevronDown, FaTimes } from "react-icons/fa";
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
@@ -315,13 +316,14 @@ function Appbar() {
         }}
       >
         <Link href="/">
-          <img
+          <Image
             style={{
               cursor: "pointer",
             }}
             src="/intellidiag.png"
             alt="IntelliDiag Logo"
-            height="22px"
+            width={22}
+            height={22}
           />
         </Link>
       </div>

@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@/lib/auth';
-import { getRow, runQuery } from '@/lib/database';
+import { hybridDb } from '@/lib/hybridDatabase';
+import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
+
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+
+// Helper function to verify JWT token
+const verifyToken = (request: NextRequest) => {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return null;
+    }
+    const token = authHeader.substring(7);
+    try {
+        return jwt.verify(token, JWT_SECRET) as { id: string };
+    } catch (error) {
+        return null;
+    }
+};
 
 export async function POST(request: NextRequest) {
     try {
@@ -18,14 +34,10 @@ export async function POST(request: NextRequest) {
         }
 
         // Get existing scans that don't have failed status
-        const scans = await getRow(`
-      SELECT s.* FROM scans s
-      LEFT JOIN ai_analysis aa ON s.id = aa.scanId
-      WHERE aa.status IS NOT NULL AND aa.status != 'failed'
-      LIMIT 3
-    `);
+        const allScans = await hybridDb.getAllScans();
+        const scans = allScans.filter(scan => scan.status !== 'failed').slice(0, 3);
 
-        if (!scans) {
+        if (scans.length === 0) {
             return NextResponse.json(
                 { status: 'error', message: 'No scans found to convert to failed status' },
                 { status: 404 }
@@ -33,27 +45,31 @@ export async function POST(request: NextRequest) {
         }
 
         // Convert some analyses to failed status for testing
-        const scanArray = Array.isArray(scans) ? scans : [scans];
-
-        for (const scan of scanArray.slice(0, 2)) { // Convert first 2 scans
+        let convertedCount = 0;
+        for (const scan of scans.slice(0, 2)) { // Convert first 2 scans
             // Update AI analysis status to failed
-            await runQuery(
-                'UPDATE ai_analysis SET status = ?, confidence = NULL, findings = NULL, updatedAt = CURRENT_TIMESTAMP WHERE scanId = ?',
-                ['failed', scan.id]
-            );
+            const analyses = await hybridDb.getAnalysesByScanId(scan.id);
+            if (analyses.length > 0) {
+                await hybridDb.updateAnalysis(analyses[0].id, {
+                    status: 'failed',
+                    confidence: 0,
+                    result: {}
+                });
+            }
 
             // Update scan status to failed
-            await runQuery(
-                'UPDATE scans SET status = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-                ['failed', scan.id]
-            );
+            await hybridDb.updateScan(scan.id, {
+                status: 'failed'
+            });
+
+            convertedCount++;
         }
 
         return NextResponse.json({
             status: 'success',
-            message: `Converted ${Math.min(scanArray.length, 2)} analyses to failed status for testing`,
+            message: `Converted ${convertedCount} analyses to failed status for testing`,
             data: {
-                convertedCount: Math.min(scanArray.length, 2)
+                convertedCount
             }
         });
 

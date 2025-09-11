@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAll, runQuery, getRow } from '@/lib/database';
+import { hybridDb } from '@/lib/hybridDatabase';
 import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 
 // Helper function to verify JWT token
 const verifyToken = (request: NextRequest) => {
@@ -16,7 +16,7 @@ const verifyToken = (request: NextRequest) => {
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: number };
+        return jwt.verify(token, JWT_SECRET) as { id: string };
     } catch (error) {
         return null;
     }
@@ -37,37 +37,47 @@ export async function GET(request: NextRequest) {
         const page = parseInt(searchParams.get('page') || '1');
         const limit = parseInt(searchParams.get('limit') || '10');
         const search = searchParams.get('search') || '';
+
+        // Get all patients
+        const allPatients = await hybridDb.getAllPatients();
+
+        // Apply search filter
+        let filteredPatients = allPatients;
+        if (search) {
+            filteredPatients = allPatients.filter(patient =>
+                patient.first_name.toLowerCase().includes(search.toLowerCase()) ||
+                patient.last_name.toLowerCase().includes(search.toLowerCase()) ||
+                patient.email.toLowerCase().includes(search.toLowerCase()) ||
+                patient.id.includes(search)
+            );
+        }
+
+        // Apply pagination
         const offset = (page - 1) * limit;
+        const paginatedPatients = filteredPatients.slice(offset, offset + limit);
 
-        let sql = `
-      SELECT p.*, u.firstName as doctorFirstName, u.lastName as doctorLastName
-      FROM patients p
-      LEFT JOIN users u ON p.assignedDoctorId = u.id
-      WHERE p.isActive = 1
-    `;
-        let params: any[] = [];
+        // Transform to expected format
+        const patients = paginatedPatients.map(patient => ({
+            id: patient.id,
+            patientId: patient.id,
+            firstName: patient.first_name,
+            lastName: patient.last_name,
+            dateOfBirth: patient.date_of_birth,
+            gender: patient.gender,
+            contactNumber: patient.phone,
+            email: patient.email,
+            street: patient.address,
+            city: '',
+            state: '',
+            zipCode: '',
+            country: '',
+            assignedDoctorId: null,
+            isActive: true,
+            createdAt: patient.created_at,
+            updatedAt: patient.updated_at
+        }));
 
-        if (search) {
-            sql += ` AND (p.firstName LIKE ? OR p.lastName LIKE ? OR p.patientId LIKE ? OR p.email LIKE ?)`;
-            params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
-        }
-
-        sql += ` ORDER BY p.createdAt DESC LIMIT ? OFFSET ?`;
-        params.push(limit, offset);
-
-        const patients = await getAll(sql, params);
-
-        // Get total count
-        let countSql = 'SELECT COUNT(*) as total FROM patients WHERE isActive = 1';
-        let countParams: any[] = [];
-
-        if (search) {
-            countSql += ` AND (firstName LIKE ? OR lastName LIKE ? OR patientId LIKE ? OR email LIKE ?)`;
-            countParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
-        }
-
-        const countResult = await getRow<{ total: number }>(countSql, countParams);
-        const total = countResult?.total || 0;
+        const total = filteredPatients.length;
 
         return NextResponse.json({
             status: 'success',
@@ -126,56 +136,41 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Generate unique patient ID
-        const year = new Date().getFullYear();
-        const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-        let patientId = `P${year}${randomNum}`;
-
-        // Check if patient ID already exists (very unlikely but good practice)
-        const existingPatient = await getRow('SELECT id FROM patients WHERE patientId = ?', [patientId]);
-        if (existingPatient) {
-            // If by chance the ID exists, generate a new one
-            const newRandomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-            patientId = `P${year}${newRandomNum}`;
-        }
-
         // Create new patient
-        const result = await runQuery(
-            `INSERT INTO patients (
-        patientId, firstName, lastName, dateOfBirth, gender, contactNumber, 
-        email, street, city, state, zipCode, country, assignedDoctorId
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [patientId, firstName, lastName, dateOfBirth, gender, contactNumber,
-                email, street, city, state, zipCode, country, assignedDoctorId]
-        );
-
-        // Get the created patient
-        const patient = await getRow<{
-            id: number;
-            patientId: string;
-            firstName: string;
-            lastName: string;
-            dateOfBirth: string;
-            gender: string;
-            contactNumber?: string;
-            email?: string;
-            street?: string;
-            city?: string;
-            state?: string;
-            zipCode?: string;
-            country?: string;
-            assignedDoctorId?: number;
-            isActive: boolean;
-            createdAt: string;
-            updatedAt: string;
-        }>(
-            'SELECT * FROM patients WHERE id = ?',
-            [result.id]
-        );
+        const patient = await hybridDb.createPatient({
+            first_name: firstName,
+            last_name: lastName,
+            date_of_birth: dateOfBirth,
+            gender: gender as 'male' | 'female' | 'other',
+            phone: contactNumber || '',
+            email: email || '',
+            address: street || '',
+            medical_history: ''
+        });
 
         return NextResponse.json({
             status: 'success',
-            data: { patient }
+            data: {
+                patient: {
+                    id: patient.id,
+                    patientId: patient.id,
+                    firstName: patient.first_name,
+                    lastName: patient.last_name,
+                    dateOfBirth: patient.date_of_birth,
+                    gender: patient.gender,
+                    contactNumber: patient.phone,
+                    email: patient.email,
+                    street: patient.address,
+                    city: '',
+                    state: '',
+                    zipCode: '',
+                    country: '',
+                    assignedDoctorId: null,
+                    isActive: true,
+                    createdAt: patient.created_at,
+                    updatedAt: patient.updated_at
+                }
+            }
         }, { status: 201 });
 
     } catch (error) {

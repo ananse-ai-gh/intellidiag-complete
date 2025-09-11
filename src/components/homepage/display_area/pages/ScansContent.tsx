@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/services/api';
 import styled from 'styled-components';
@@ -603,14 +604,14 @@ const AIAnalysisResults = ({ result, endpointName, endpointId, uploadedFile }: {
                 justifyContent: 'center',
                 color: '#666',
                 fontSize: '12px',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                position: 'relative'
               }}>
-                <img 
+                <Image 
                   src={getUploadedImageUrl()!} 
                   alt="Uploaded Image"
+                  fill
                   style={{ 
-                    width: '100%', 
-                    height: '100%', 
                     objectFit: 'cover',
                     borderRadius: '6px'
                   }}
@@ -634,14 +635,14 @@ const AIAnalysisResults = ({ result, endpointName, endpointId, uploadedFile }: {
                   justifyContent: 'center',
                   color: '#666',
                   fontSize: '12px',
-                  overflow: 'hidden'
+                  overflow: 'hidden',
+                  position: 'relative'
                 }}>
-                  <img 
+                  <Image 
                     src={`data:image/jpeg;base64,${processedImageData}`} 
                     alt="AI Processed Image"
+                    fill
                     style={{ 
-                      width: '100%', 
-                      height: '100%', 
                       borderRadius: '6px'
                     }}
                   />

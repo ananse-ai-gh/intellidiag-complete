@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -83,7 +84,7 @@ const Navbar = () => {
           <LogoContainer>
             <Link href='/'>
               <h1>
-                <img src='/intellidiag.png' alt='IntelliDiag Logo' />
+                <Image src='/intellidiag.png' alt='IntelliDiag Logo' width={120} height={30} />
               </h1>
             </Link>
           </LogoContainer>

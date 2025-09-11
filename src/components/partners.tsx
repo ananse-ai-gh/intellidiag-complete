@@ -1,5 +1,6 @@
 "use client";
 import React, { useRef } from "react";
+import Image from 'next/image';
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -149,17 +150,17 @@ function Partners() {
             overflow: "hidden",
             borderRadius: "30px",
             willChange: "transform",
+            position: "relative"
           }}
         >
-          <img
+          <Image
             src="africa1.jpg"
+            alt="Africa"
+            fill
             style={{
-              height: "100%",
-              width: "100%",
               objectFit: "cover",
               display: "block",
             }}
-            alt="Africa"
           />
         </div>
         <div
@@ -174,15 +175,14 @@ function Partners() {
             position: "relative",
           }}
         >
-          <img
+          <Image
             src="africa1.jpg"
+            alt="Africa"
+            fill
             style={{
-              height: "100%",
-              width: "100%",
               objectFit: "cover",
               display: "block",
             }}
-            alt="Africa"
           />
         </div>
         <div
@@ -194,17 +194,17 @@ function Partners() {
             backgroundColor: "#FFFFFF",
             borderRadius: "30px",
             willChange: "transform, opacity",
+            position: "relative"
           }}
         >
-          <img
+          <Image
             src="africa1.jpg"
+            alt="Africa"
+            fill
             style={{
-              height: "100%",
-              width: "100%",
               objectFit: "cover",
               display: "block",
             }}
-            alt="Africa"
           />
         </div>
 

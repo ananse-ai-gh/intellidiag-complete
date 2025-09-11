@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRow } from '@/lib/database';
+import { supabaseDb } from '@/lib/supabaseDatabase';
 import { verifyToken } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -24,59 +24,34 @@ export async function GET(request: NextRequest) {
         const status = searchParams.get('status');
         const scanType = searchParams.get('scanType');
 
-        // Build query
-        let query = `
-            SELECT 
-                s.scanId,
-                s.scanType,
-                s.bodyPart,
-                s.scanDate,
-                s.priority,
-                s.status,
-                s.notes,
-                s.createdAt,
-                p.firstName as patientFirstName,
-                p.lastName as patientLastName,
-                p.patientId as patientIdNumber,
-                u.firstName as uploadedByFirstName,
-                u.lastName as uploadedByLastName,
-                aa.confidence,
-                aa.findings as aiFindings
-            FROM scans s
-            JOIN patients p ON s.patientId = p.id
-            JOIN users u ON s.uploadedById = u.id
-            LEFT JOIN ai_analysis aa ON s.id = aa.scanId
-        `;
-
-        const whereConditions = [];
-        const queryParams = [];
+        // Build Supabase query
+        let query = supabaseDb.client
+            .from('scans')
+            .select(`
+                *,
+                patients!inner(*),
+                users!inner(*),
+                analyses(*)
+            `);
 
         if (ids) {
-            const idArray = ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
-            if (idArray.length > 0) {
-                whereConditions.push(`s.id IN (${idArray.map(() => '?').join(',')})`);
-                queryParams.push(...idArray);
-            }
+            const idArray = ids.split(',').map(id => id.trim());
+            query = query.in('id', idArray);
         }
 
         if (status) {
-            whereConditions.push('s.status = ?');
-            queryParams.push(status);
+            query = query.eq('status', status);
         }
 
         if (scanType) {
-            whereConditions.push('s.scanType = ?');
-            queryParams.push(scanType);
+            query = query.eq('scan_type', scanType);
         }
 
-        if (whereConditions.length > 0) {
-            query += ' WHERE ' + whereConditions.join(' AND ');
+        const { data: scans, error } = await query.order('created_at', { ascending: false });
+
+        if (error) {
+            throw error;
         }
-
-        query += ' ORDER BY s.createdAt DESC';
-
-        // Execute query
-        const scans = await getRow(query, queryParams);
 
         if (!scans || scans.length === 0) {
             return NextResponse.json(
@@ -103,19 +78,19 @@ export async function GET(request: NextRequest) {
         ];
 
         const csvRows = scans.map((scan: any) => [
-            scan.scanId,
-            `${scan.patientFirstName} ${scan.patientLastName}`,
-            scan.patientIdNumber,
-            scan.scanType,
-            scan.bodyPart,
-            scan.scanDate,
+            scan.id,
+            `${scan.patients.first_name} ${scan.patients.last_name}`,
+            scan.patients.id,
+            scan.scan_type,
+            scan.body_part,
+            scan.created_at,
             scan.priority,
             scan.status,
             scan.confidence ? `${scan.confidence}%` : 'N/A',
-            scan.aiFindings || 'N/A',
-            scan.notes || 'N/A',
-            `${scan.uploadedByFirstName} ${scan.uploadedByLastName}`,
-            scan.createdAt
+            scan.findings || 'N/A',
+            scan.findings || 'N/A',
+            `${scan.users.first_name} ${scan.users.last_name}`,
+            scan.created_at
         ]);
 
         const csvContent = [
