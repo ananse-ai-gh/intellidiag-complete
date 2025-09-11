@@ -106,11 +106,11 @@ class ScanQueueManager {
             if (result.success) {
                 // Update to completed status
                 const finalStatus = this.getFinalStatus(nextItem.scanType, result.data);
-                await this.updateScanStatus(nextItem.scanId, finalStatus, null, result.processingTime);
+                await this.updateScanStatus(nextItem.scanId, finalStatus, undefined, result.processingTime);
                 console.log(`✅ Scan ${nextItem.scanId} completed successfully`);
             } else {
                 // Handle failure
-                await this.handleProcessingFailure(nextItem, result.error);
+                await this.handleProcessingFailure(nextItem, result.error || 'Unknown error occurred');
             }
 
         } catch (error) {
@@ -186,7 +186,7 @@ class ScanQueueManager {
      */
     private async processWithAIService(scanType: string, imageFile: File): Promise<any> {
         try {
-            const result = await aiAnalysisService.performAnalysis(imageFile, scanType);
+            const result = await aiAnalysisService.performAnalysis(imageFile, scanType, 'chest');
             return result;
         } catch (error) {
             throw new Error(`AI service error: ${error}`);
@@ -261,7 +261,7 @@ class ScanQueueManager {
 
             if (processingTime) {
                 updateFields.push(`processing_duration_ms = ?`);
-                params.push(processingTime);
+                params.push(processingTime.toString());
             }
 
             if (status.startsWith('ai_processing')) {

@@ -453,11 +453,11 @@ export default function ScansPage() {
                 </ImagePreview>
 
                 <ScanActions>
-                  <Button variant="secondary" size="sm">
+                  <Button variant="secondary">
                     <FaEye />
                     View
                   </Button>
-                  <Button variant="secondary" size="sm">
+                  <Button variant="secondary">
                     <FaDownload />
                     Download
                   </Button>

@@ -646,6 +646,7 @@ const ScansContentRedesigned = () => {
   const [createForm, setCreateForm] = useState({
     patientId: '',
     scanType: '',
+    bodyPart: '',
     priority: 'medium',
     scanDate: new Date().toISOString().split('T')[0]
   });
@@ -833,28 +834,10 @@ const ScansContentRedesigned = () => {
   // Calculate statistics
   const stats = {
     total: scans.length,
-    uploading: scans.filter(scan => scan.status === 'uploading').length,
-    uploaded: scans.filter(scan => scan.status === 'uploaded').length,
-    queued: scans.filter(scan => scan.status === 'queued').length,
-    processing: scans.filter(scan => 
-      scan.status === 'queue_processing' || 
-      scan.status.startsWith('ai_processing') || 
-      scan.status === 'report_generating'
-    ).length,
-    completed: scans.filter(scan => 
-      scan.status === 'completed' || 
-      scan.status === 'completed_with_findings' || 
-      scan.status === 'completed_no_findings' || 
-      scan.status === 'translation_completed'
-    ).length,
-    failed: scans.filter(scan => 
-      scan.status === 'failed' || 
-      scan.status.startsWith('ai_failed') || 
-      scan.status === 'queue_failed' || 
-      scan.status === 'validation_failed' ||
-      scan.status === 'translation_failed' ||
-      scan.status === 'report_failed'
-    ).length
+    pending: scans.filter(scan => scan.status === 'pending').length,
+    analyzing: scans.filter(scan => scan.status === 'analyzing').length,
+    completed: scans.filter(scan => scan.status === 'completed').length,
+    failed: scans.filter(scan => scan.status === 'failed').length
   };
 
   // Filter scans based on search and filters
@@ -865,7 +848,7 @@ const ScansContentRedesigned = () => {
       scan.patientLastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       scan.scanType.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesPatientFilter = filters.patientId === '' || scan.patientId === parseInt(filters.patientId);
+    const matchesPatientFilter = filters.patientId === '' || scan.patientIdNumber === filters.patientId;
     const matchesScanTypeFilter = filters.scanType === '' || scan.scanType === filters.scanType;
     const matchesPriorityFilter = filters.priority === '' || scan.priority === filters.priority;
     const matchesStatusFilter = filters.status === '' || scan.status === filters.status;
@@ -1007,22 +990,22 @@ const ScansContentRedesigned = () => {
             <StatLabel>Total Scans</StatLabel>
           </StatContent>
         </StatCard>
-        <StatCard onClick={() => setFilters(prev => ({ ...prev, status: 'queued' }))}>
+        <StatCard onClick={() => setFilters(prev => ({ ...prev, status: 'pending' }))}>
           <StatIcon color="#FFC107">
             <FaClock />
           </StatIcon>
           <StatContent>
-            <StatValue>{stats.queued}</StatValue>
-            <StatLabel>Queued</StatLabel>
+            <StatValue>{stats.pending}</StatValue>
+            <StatLabel>Pending</StatLabel>
           </StatContent>
         </StatCard>
-        <StatCard onClick={() => setFilters(prev => ({ ...prev, status: 'processing' }))}>
+        <StatCard onClick={() => setFilters(prev => ({ ...prev, status: 'analyzing' }))}>
           <StatIcon color="#0694FB">
             <FaSpinner />
           </StatIcon>
           <StatContent>
-            <StatValue>{stats.processing}</StatValue>
-            <StatLabel>Processing</StatLabel>
+            <StatValue>{stats.analyzing}</StatValue>
+            <StatLabel>Analyzing</StatLabel>
           </StatContent>
         </StatCard>
         <StatCard onClick={() => setFilters(prev => ({ ...prev, status: 'completed' }))}>
@@ -1103,12 +1086,12 @@ const ScansContentRedesigned = () => {
                   )}
 
                   <CardActions>
-                    <Button variant="secondary" size="small">
+                    <Button variant="secondary">
                       <FaEye />
                       View Details
                     </Button>
                     {scan.status === 'completed' && (
-                      <Button variant="success" size="small">
+                      <Button variant="success">
                         <FaDownload />
                         Download Report
                       </Button>

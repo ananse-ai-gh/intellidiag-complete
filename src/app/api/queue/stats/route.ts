@@ -5,12 +5,7 @@ import { scanQueueManager } from '@/services/scanQueueManager';
 // GET /api/queue/stats - Get queue statistics
 export async function GET(request: NextRequest) {
     try {
-        const token = request.headers.get('authorization')?.replace('Bearer ', '');
-        if (!token) {
-            return NextResponse.json({ success: false, message: 'No token provided' }, { status: 401 });
-        }
-
-        const user = await verifyToken(token);
+        const user = await verifyToken(request);
         if (!user) {
             return NextResponse.json({ success: false, message: 'Invalid token' }, { status: 401 });
         }

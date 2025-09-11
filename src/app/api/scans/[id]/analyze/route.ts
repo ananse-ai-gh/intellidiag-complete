@@ -100,7 +100,7 @@ async function processAnalysisInBackground(scanId: number, imagePath: string, sc
 
         // Read image file
         const imageBuffer = await readFile(join(process.cwd(), 'public', imagePath));
-        const imageFile = new File([imageBuffer], 'scan.jpg', { type: 'image/jpeg' });
+        const imageFile = new File([new Uint8Array(imageBuffer)], 'scan.jpg', { type: 'image/jpeg' });
 
         // Perform AI analysis
         const analysisResult = await aiAnalysisService.performAnalysis(imageFile, scanType, bodyPart);
