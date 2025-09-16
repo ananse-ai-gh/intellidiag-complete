@@ -69,6 +69,10 @@ const initSQLite = () => {
 
 // Explicit getter for SQLite connection (used by health checks and dev-only paths)
 export const getSQLiteDb = () => {
+    // Skip SQLite initialization during build time
+    if (process.env.NODE_ENV === 'production') {
+        return null // Skip during build
+    }
     return initSQLite()
 }
 

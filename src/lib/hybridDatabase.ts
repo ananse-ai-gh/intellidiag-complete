@@ -23,13 +23,28 @@ const isProduction = process.env.NODE_ENV === 'production'
 const useSupabase = process.env.USE_SUPABASE === 'true' || isProduction
 
 class HybridDatabaseService {
-    private supabaseClient = createServerSupabaseClient()
+    private supabaseClient: any = null
     private sqliteDb: sqlite3.Database | null = null
+    private initialized = false
 
     constructor() {
-        if (!useSupabase) {
+        // Don't initialize anything in constructor to avoid build-time issues
+    }
+
+    private ensureInitialized() {
+        if (this.initialized) return
+
+        // Skip initialization during build time
+        if (process.env.NODE_ENV === 'production' && !process.env.USE_SUPABASE) {
+            return
+        }
+
+        if (useSupabase) {
+            this.supabaseClient = createServerSupabaseClient()
+        } else {
             this.initSQLite()
         }
+        this.initialized = true
     }
 
     private initSQLite() {
@@ -52,6 +67,8 @@ class HybridDatabaseService {
 
     // User operations
     async createUser(userData: UserInsert): Promise<User> {
+        this.ensureInitialized()
+
         if (useSupabase) {
             const { data, error } = await this.supabaseClient
                 .from('users')
@@ -91,6 +108,8 @@ class HybridDatabaseService {
     }
 
     async getUserById(id: string): Promise<User | null> {
+        this.ensureInitialized()
+
         if (useSupabase) {
             const { data, error } = await this.supabaseClient
                 .from('users')
@@ -136,6 +155,8 @@ class HybridDatabaseService {
     }
 
     async getUserByEmail(email: string): Promise<User | null> {
+        this.ensureInitialized()
+
         if (useSupabase) {
             const { data, error } = await this.supabaseClient
                 .from('users')
@@ -1012,6 +1033,8 @@ class HybridDatabaseService {
     // Health check
     async healthCheck(): Promise<boolean> {
         try {
+            this.ensureInitialized()
+
             if (useSupabase) {
                 const { error } = await this.supabaseClient
                     .from('users')
@@ -1033,6 +1056,8 @@ class HybridDatabaseService {
 
     // Initialize database tables
     async initDatabase(): Promise<void> {
+        this.ensureInitialized()
+
         if (useSupabase) {
             // Supabase database initialization is handled by migrations
             return Promise.resolve()
