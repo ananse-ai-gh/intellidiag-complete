@@ -67,6 +67,11 @@ const initSQLite = () => {
     return sqliteDb
 }
 
+// Explicit getter for SQLite connection (used by health checks and dev-only paths)
+export const getSQLiteDb = () => {
+    return initSQLite()
+}
+
 // Database selection function
 export const getDatabase = () => {
     if (useSupabase) {
