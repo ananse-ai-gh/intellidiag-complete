@@ -66,9 +66,9 @@ class HybridDatabaseService {
                 const id = Math.random().toString(36).substr(2, 9)
                 const now = new Date().toISOString()
                 this.sqliteDb!.run(
-                    `INSERT INTO users (id, email, firstName, lastName, role, password, isActive, createdAt, updatedAt) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [id, userData.email, userData.first_name, userData.last_name, userData.role, userData.password, true, now, now],
+                    `INSERT INTO users (id, email, firstName, lastName, role, password, specialization, licenseNumber, isActive, createdAt, updatedAt) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [id, userData.email, userData.first_name, userData.last_name, userData.role, userData.password, userData.specialization, userData.licenseNumber, true, now, now],
                     function (err) {
                         if (err) reject(err)
                         else resolve({
@@ -78,6 +78,8 @@ class HybridDatabaseService {
                             last_name: userData.last_name,
                             role: userData.role,
                             password: userData.password,
+                            specialization: userData.specialization,
+                            licenseNumber: userData.licenseNumber,
                             isActive: true,
                             created_at: now,
                             updated_at: now

@@ -8,6 +8,12 @@ CREATE TABLE IF NOT EXISTS users (
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     role VARCHAR(20) CHECK (role IN ('admin', 'doctor', 'radiologist', 'patient')) NOT NULL,
+    password VARCHAR(255),
+    isActive BOOLEAN DEFAULT true,
+    lastLogin TIMESTAMP WITH TIME ZONE,
+    specialization VARCHAR(100),
+    licenseNumber VARCHAR(50),
+    profileImage TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -34,7 +40,7 @@ CREATE TABLE IF NOT EXISTS scans (
     scan_type VARCHAR(100) NOT NULL,
     body_part VARCHAR(100) NOT NULL,
     priority VARCHAR(10) CHECK (priority IN ('low', 'medium', 'high', 'urgent')) NOT NULL,
-    status VARCHAR(20) CHECK (status IN ('pending', 'processing', 'completed', 'failed')) DEFAULT 'pending',
+    status VARCHAR(20) CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'archived')) DEFAULT 'pending',
     ai_status VARCHAR(20) CHECK (ai_status IN ('pending', 'processing', 'completed', 'failed')) DEFAULT 'pending',
     file_path TEXT NOT NULL,
     file_name VARCHAR(255) NOT NULL,
