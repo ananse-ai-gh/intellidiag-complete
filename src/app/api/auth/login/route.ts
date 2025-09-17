@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { supabaseAuth } from '@/lib/supabaseAuth';
 import { supabaseDb } from '@/lib/supabaseDatabase';
 
 export const dynamic = 'force-dynamic';
@@ -29,47 +30,99 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Check if user exists and password is correct
-        const user = await supabaseDb.getUserByEmail(email);
+        // Check if using Supabase Auth
+        const useSupabase = process.env.USE_SUPABASE === 'true' || process.env.NODE_ENV === 'production';
 
-        if (!user || !(await bcrypt.compare(password, user.password || ''))) {
-            return NextResponse.json(
-                { status: 'error', message: 'Incorrect email or password' },
-                { status: 401 }
-            );
-        }
+        if (useSupabase) {
+            // Use Supabase Auth for login
+            const result = await supabaseAuth.signIn({
+                email,
+                password
+            });
 
-        // Check if user is active
-        if (!user.isActive) {
-            return NextResponse.json(
-                { status: 'error', message: 'Account is deactivated' },
-                { status: 401 }
-            );
-        }
-
-        // Update last login
-        await supabaseDb.updateUser(user.id, {
-            lastLogin: new Date().toISOString()
-        });
-
-        // Generate JWT token
-        const token = generateToken(user.id);
-
-        // Return user data and token
-        return NextResponse.json({
-            status: 'success',
-            message: 'Login successful',
-            data: {
-                user: {
-                    id: user.id,
-                    email: user.email,
-                    firstName: user.first_name,
-                    lastName: user.last_name,
-                    role: user.role
-                },
-                token
+            if (result.error) {
+                return NextResponse.json(
+                    { status: 'error', message: result.error },
+                    { status: 401 }
+                );
             }
-        });
+
+            // Get user profile
+            const userProfile = await supabaseAuth.getUserProfile(result.user?.id || '');
+
+            if (!userProfile || !userProfile.isActive) {
+                return NextResponse.json(
+                    { status: 'error', message: 'Account is deactivated' },
+                    { status: 401 }
+                );
+            }
+
+            return NextResponse.json({
+                status: 'success',
+                message: 'Login successful',
+                data: {
+                    user: {
+                        id: userProfile.id,
+                        email: userProfile.email,
+                        firstName: userProfile.first_name,
+                        lastName: userProfile.last_name,
+                        role: userProfile.role,
+                        specialization: userProfile.specialization,
+                        licenseNumber: userProfile.licenseNumber,
+                        isActive: userProfile.isActive,
+                        createdAt: userProfile.created_at
+                    },
+                    session: result.session
+                }
+            });
+
+        } else {
+            // Fallback to custom JWT auth for development
+            const user = await supabaseDb.getUserByEmail(email);
+
+            if (!user || !(await bcrypt.compare(password, user.password || ''))) {
+                return NextResponse.json(
+                    { status: 'error', message: 'Incorrect email or password' },
+                    { status: 401 }
+                );
+            }
+
+            // Check if user is active
+            if (!user.isActive) {
+                return NextResponse.json(
+                    { status: 'error', message: 'Account is deactivated' },
+                    { status: 401 }
+                );
+            }
+
+            // Update last login
+            await supabaseDb.updateUser(user.id, {
+                lastLogin: new Date().toISOString()
+            });
+
+            // Generate JWT token
+            const token = generateToken(user.id);
+
+            // Return user data and token
+            return NextResponse.json({
+                status: 'success',
+                message: 'Login successful',
+                data: {
+                    user: {
+                        id: user.id,
+                        email: user.email,
+                        firstName: user.first_name,
+                        lastName: user.last_name,
+                        role: user.role,
+                        specialization: user.specialization,
+                        licenseNumber: user.licenseNumber,
+                        isActive: user.isActive,
+                        createdAt: user.created_at
+                    },
+                    token
+                }
+            });
+        }
 
     } catch (error) {
         console.error('Login error:', error);

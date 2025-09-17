@@ -16,8 +16,16 @@ let supabase: any = null
 let createServerSupabaseClient: any = null
 
 if (supabaseUrl && supabaseUrl !== 'https://placeholder.supabase.co' && supabaseAnonKey && supabaseAnonKey !== 'placeholder-key') {
-    supabase = createClient(supabaseUrl, supabaseAnonKey)
+    // Client-side Supabase client (for auth)
+    supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+            autoRefreshToken: true,
+            persistSession: true,
+            detectSessionInUrl: true
+        }
+    })
 
+    // Server-side Supabase client (for admin operations)
     createServerSupabaseClient = () => {
         const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key'
         return createClient(supabaseUrl, supabaseServiceKey, {
@@ -31,7 +39,12 @@ if (supabaseUrl && supabaseUrl !== 'https://placeholder.supabase.co' && supabase
     // Create mock clients for build time
     supabase = {
         from: () => ({ select: () => ({ eq: () => ({ data: [], error: null }) }) }),
-        auth: { signIn: () => Promise.resolve({ data: null, error: null }) }
+        auth: {
+            signUp: () => Promise.resolve({ data: null, error: null }),
+            signIn: () => Promise.resolve({ data: null, error: null }),
+            signOut: () => Promise.resolve({ error: null }),
+            getUser: () => Promise.resolve({ data: null, error: null })
+        }
     }
 
     createServerSupabaseClient = () => ({
