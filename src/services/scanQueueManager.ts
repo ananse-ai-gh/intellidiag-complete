@@ -1,4 +1,4 @@
-import { hybridDb } from '@/lib/hybridDatabase';
+import { db } from '@/lib/supabaseProfilesDatabase';
 import { aiAnalysisService } from '@/services/aiAnalysisService';
 
 export interface QueueItem {
@@ -43,7 +43,7 @@ class ScanQueueManager {
             }
 
             // Update scan status to queued
-            await hybridDb.updateScan(scanId, {
+            await db.updateScan(scanId, {
                 status: 'pending',
                 priority: priority
             });
@@ -120,7 +120,7 @@ class ScanQueueManager {
      */
     private async getNextQueueItem(): Promise<QueueItem | null> {
         try {
-            const allScans = await hybridDb.getAllScans();
+            const allScans = await db.getAllScans();
             const queuedScans = allScans.filter(scan => scan.status === 'pending');
 
             if (queuedScans.length === 0) {
@@ -217,9 +217,9 @@ class ScanQueueManager {
             const report = await aiAnalysisService.generateLLMReport(aiResult);
 
             // Update AI analysis table
-            const analyses = await hybridDb.getAnalysesByScanId(scanId);
+            const analyses = await db.getAnalysesByScanId(scanId);
             if (analyses.length > 0) {
-                await hybridDb.updateAnalysis(analyses[0].id, {
+                await db.updateAnalysis(analyses[0].id, {
                     status: 'completed',
                     confidence: aiResult.confidence || 0,
                     result: {
@@ -257,7 +257,7 @@ class ScanQueueManager {
      */
     private async updateScanStatus(scanId: string, status: string, errorMessage?: string, processingTime?: number): Promise<void> {
         try {
-            await hybridDb.updateScan(scanId, {
+            await db.updateScan(scanId, {
                 status: status as 'pending' | 'processing' | 'completed' | 'failed'
             });
         } catch (error) {
@@ -270,7 +270,7 @@ class ScanQueueManager {
      */
     private async getScanImage(scanId: string): Promise<File | null> {
         try {
-            const scan = await hybridDb.getScanById(scanId);
+            const scan = await db.getScanById(scanId);
             if (!scan || !scan.file_path) {
                 return null;
             }
@@ -339,7 +339,7 @@ class ScanQueueManager {
      */
     async getQueueStats(): Promise<any> {
         try {
-            const allScans = await hybridDb.getAllScans();
+            const allScans = await db.getAllScans();
             const queuedScans = allScans.filter(scan =>
                 ['pending', 'processing'].includes(scan.status)
             );

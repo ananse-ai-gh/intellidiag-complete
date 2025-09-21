@@ -1,6 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { verifyToken } from '@/lib/auth';
-import { supabaseDb } from '@/lib/supabaseDatabase';
+import { createServerSupabaseClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -23,12 +23,12 @@ export async function GET(request: NextRequest) {
     const scanType = searchParams.get('scanType');
 
     // Get all scans with analyses using Supabase
-    let query = supabaseDb.client
+    const supabase = createServerSupabaseClient();
+    let query = supabase
       .from('scans')
       .select(`
         *,
         patients!inner(*),
-        users!inner(*),
         analyses!inner(*)
       `)
       .not('analyses.status', 'is', null);

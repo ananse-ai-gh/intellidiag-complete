@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Transform to expected format
-        const queue = pendingScans?.map(scan => ({
+        const queue = pendingScans?.map((scan: any) => ({
             id: scan.id,
             scanId: scan.id,
             patientId: scan.patient_id,

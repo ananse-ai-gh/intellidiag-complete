@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseDb } from '@/lib/supabaseDatabase';
+import { createServerSupabaseClient } from '@/lib/supabase';
 import { verifyToken } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -25,12 +25,12 @@ export async function GET(request: NextRequest) {
         const scanType = searchParams.get('scanType');
 
         // Build Supabase query
-        let query = supabaseDb.client
+        const supabase = createServerSupabaseClient();
+        let query = supabase
             .from('scans')
             .select(`
                 *,
                 patients!inner(*),
-                users!inner(*),
                 analyses(*)
             `);
 

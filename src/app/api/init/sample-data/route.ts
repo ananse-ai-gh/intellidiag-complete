@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hybridDb } from '@/lib/hybridDatabase';
-import bcrypt from 'bcryptjs';
+import { db } from '@/lib/supabaseProfilesDatabase';
+import { createServerSupabaseClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -10,8 +10,8 @@ export const fetchCache = 'force-no-store';
 export async function POST(request: NextRequest) {
     try {
         // Check if sample data already exists
-        const existingPatients = await hybridDb.getAllPatients();
-        const existingScans = await hybridDb.getAllScans();
+        const existingPatients = await db.getAllPatients();
+        const existingScans = await db.getAllScans();
 
         if (existingPatients.length > 0 || existingScans.length > 0) {
             return NextResponse.json({
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
         const users = [
             {
                 email: 'doctor.smith@intellidiag.com',
-                password: await bcrypt.hash('password123', 12),
+                password: 'password123',
                 firstName: 'John',
                 lastName: 'Smith',
                 role: 'doctor' as const,
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
             },
             {
                 email: 'radiologist.jones@intellidiag.com',
-                password: await bcrypt.hash('password123', 12),
+                password: 'password123',
                 firstName: 'Sarah',
                 lastName: 'Jones',
                 role: 'radiologist' as const,
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
             },
             {
                 email: 'doctor.wilson@intellidiag.com',
-                password: await bcrypt.hash('password123', 12),
+                password: 'password123',
                 firstName: 'Michael',
                 lastName: 'Wilson',
                 role: 'doctor' as const,
@@ -49,17 +49,38 @@ export async function POST(request: NextRequest) {
         ];
 
         const userIds: string[] = [];
+        const supabaseAdmin = createServerSupabaseClient();
+
         for (const user of users) {
-            const createdUser = await hybridDb.createUser({
+            // Create user in Supabase auth
+            const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
                 email: user.email,
-                first_name: user.firstName,
-                last_name: user.lastName,
-                role: user.role,
                 password: user.password,
-                specialization: user.specialization,
-                isActive: true
+                user_metadata: {
+                    first_name: user.firstName,
+                    last_name: user.lastName,
+                    role: user.role,
+                    specialization: user.specialization
+                },
+                email_confirm: true
             });
-            userIds.push(createdUser.id);
+
+            if (authError || !authData.user) {
+                console.error('Error creating auth user:', authError);
+                continue;
+            }
+
+            // Create profile in profiles table
+            const createdProfile = await db.createProfile({
+                id: authData.user.id,
+                role: user.role,
+                specialization: user.specialization,
+                isactive: true,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            });
+
+            userIds.push(createdProfile.id);
         }
 
         // Create sample patients
@@ -113,7 +134,7 @@ export async function POST(request: NextRequest) {
 
         const patientIds: string[] = [];
         for (const patient of patients) {
-            const createdPatient = await hybridDb.createPatient({
+            const createdPatient = await db.createPatient({
                 first_name: patient.firstName,
                 last_name: patient.lastName,
                 date_of_birth: patient.dateOfBirth,
@@ -192,7 +213,7 @@ export async function POST(request: NextRequest) {
 
         const scanIds: string[] = [];
         for (const scan of scans) {
-            const createdScan = await hybridDb.createScan({
+            const createdScan = await db.createScan({
                 patient_id: scan.patientId,
                 scan_type: scan.scanType,
                 body_part: scan.bodyPart,
@@ -239,7 +260,7 @@ export async function POST(request: NextRequest) {
         ];
 
         for (const analysis of aiAnalyses) {
-            await hybridDb.createAnalysis({
+            await db.createAnalysis({
                 scan_id: analysis.scanId,
                 analysis_type: analysis.analysisType,
                 status: analysis.status,

@@ -175,8 +175,8 @@ export async function PUT(
                 user: {
                     id: updatedProfile.id,
                     email: user.email,
-                    firstName: updatedProfile.first_name,
-                    lastName: updatedProfile.last_name,
+                    firstName: user.user_metadata?.first_name || user.email.split('@')[0],
+                    lastName: user.user_metadata?.last_name || '',
                     role: updatedProfile.role,
                     specialization: updatedProfile.specialization,
                     licenseNumber: updatedProfile.licensenumber,

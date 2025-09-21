@@ -218,12 +218,12 @@ export async function DELETE(
             // This would need to be implemented if needed
         }
 
-        // Delete the scan
-        await db.updateScan(scanId, { status: 'deleted' });
+        // Archive the scan
+        await db.updateScan(scanId, { status: 'archived' });
 
         return NextResponse.json({
             status: 'success',
-            message: 'Scan deleted successfully'
+            message: 'Scan archived successfully'
         });
 
     } catch (error) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hybridDb } from '@/lib/hybridDatabase';
+import { db } from '@/lib/supabaseProfilesDatabase';
 import jwt from 'jsonwebtoken';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
@@ -43,7 +43,7 @@ export async function POST(
         const scanId = params.id;
 
         // Check if scan exists
-        const scan = await hybridDb.getScanById(scanId);
+        const scan = await db.getScanById(scanId);
 
         if (!scan) {
             return NextResponse.json(
@@ -53,18 +53,18 @@ export async function POST(
         }
 
         // Update scan status to analyzing
-        await hybridDb.updateScan(scanId, {
+        await db.updateScan(scanId, {
             status: 'processing'
         });
 
         // Update or create AI analysis record
-        const existingAnalyses = await hybridDb.getAnalysesByScanId(scanId);
+        const existingAnalyses = await db.getAnalysesByScanId(scanId);
         if (existingAnalyses.length > 0) {
-            await hybridDb.updateAnalysis(existingAnalyses[0].id, {
+            await db.updateAnalysis(existingAnalyses[0].id, {
                 status: 'processing'
             });
         } else {
-            await hybridDb.createAnalysis({
+            await db.createAnalysis({
                 scan_id: scanId,
                 analysis_type: 'ai_analysis',
                 status: 'processing',
@@ -124,14 +124,14 @@ async function processAnalysisInBackground(scanId: string, imagePath: string, sc
         const processingTime = Date.now() - startTime;
 
         // Update scan status to completed
-        await hybridDb.updateScan(scanId, {
+        await db.updateScan(scanId, {
             status: 'completed'
         });
 
         // Update AI analysis with results
-        const analyses = await hybridDb.getAnalysesByScanId(scanId);
+        const analyses = await db.getAnalysesByScanId(scanId);
         if (analyses.length > 0) {
-            await hybridDb.updateAnalysis(analyses[0].id, {
+            await db.updateAnalysis(analyses[0].id, {
                 status: 'completed',
                 confidence: analysisResult?.confidence || 0,
                 result: {
@@ -147,14 +147,14 @@ async function processAnalysisInBackground(scanId: string, imagePath: string, sc
         console.error(`Error in background analysis for scan ${scanId}:`, error);
 
         // Update scan status to failed
-        await hybridDb.updateScan(scanId, {
+        await db.updateScan(scanId, {
             status: 'failed'
         });
 
         // Update AI analysis status to failed
-        const analyses = await hybridDb.getAnalysesByScanId(scanId);
+        const analyses = await db.getAnalysesByScanId(scanId);
         if (analyses.length > 0) {
-            await hybridDb.updateAnalysis(analyses[0].id, {
+            await db.updateAnalysis(analyses[0].id, {
                 status: 'failed'
             });
         }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hybridDb } from '@/lib/hybridDatabase';
+import { db } from '@/lib/supabaseProfilesDatabase';
 import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
@@ -40,7 +40,7 @@ export async function GET(
         const scanId = params.id;
 
         // Get scan data
-        const scan = await hybridDb.getScanById(scanId);
+        const scan = await db.getScanById(scanId);
 
         if (!scan) {
             return NextResponse.json(
@@ -50,7 +50,7 @@ export async function GET(
         }
 
         // Get analysis data
-        const analyses = await hybridDb.getAnalysesByScanId(scanId);
+        const analyses = await db.getAnalysesByScanId(scanId);
         const analysis = analyses[0]; // Get the first analysis
 
         return NextResponse.json({

@@ -162,7 +162,7 @@ export interface Database {
                     scan_type?: string
                     body_part?: string
                     priority?: 'low' | 'medium' | 'high' | 'urgent'
-                    status?: 'pending' | 'processing' | 'completed' | 'failed'
+                    status?: 'pending' | 'processing' | 'completed' | 'failed' | 'archived'
                     ai_status?: 'pending' | 'processing' | 'completed' | 'failed'
                     file_path?: string
                     file_name?: string
