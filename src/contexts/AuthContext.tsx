@@ -2,6 +2,7 @@
 
 import React from "react";
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { supabase } from "@/lib/supabase";
 import { authAPI } from "@/services/api";
 import LogoutTransition from "@/components/LogoutTransition";
 
@@ -47,36 +48,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    // Temporarily disable auth state change listener to debug homepage reloading
+    // const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    //   async (event: string, session: any) => {
+    //     console.log('Auth state change:', event, session?.user?.id);
+        
+    //     if (event === 'SIGNED_IN' && session?.user) {
+    //       try {
+    //         const response = await authAPI.getMe();
+    //         if (response.data?.status === 'success') {
+    //           console.log('User loaded from auth state change:', response.data.data.user.id);
+    //           setUser(response.data.data.user);
+    //         }
+    //       } catch (e) {
+    //         console.error('Error loading user in auth state change:', e);
+    //       }
+    //     } else if (event === 'SIGNED_OUT') {
+    //       console.log('User signed out');
+    //       setUser(null);
+    //     }
+    //   }
+    // );
+
+    // return () => subscription.unsubscribe();
+  }, []);
+
   const checkAuth = async () => {
     try {
-      // Try localStorage first, then sessionStorage as backup
-      let token = localStorage.getItem("token");
-      if (!token) {
-        token = sessionStorage.getItem("token");
-        if (token) {
-          // Move from sessionStorage to localStorage
-          localStorage.setItem("token", token);
-        }
-      }
+      console.log('checkAuth called');
       
-      if (token) {
+      // Check if we're on the client side
+      if (typeof window === 'undefined') {
+        setLoading(false);
+        return;
+      }
+
+      // Use Supabase client-side authentication
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error('Session error:', error);
+        setLoading(false);
+        return;
+      }
+
+      console.log('Session check result:', session?.user?.id || 'no session');
+
+      if (session?.user) {
+        // Prefer server endpoint to bypass RLS and ensure consistent profile fetch
         try {
           const response = await authAPI.getMe();
-          // Handle the response format correctly
-          if (response.data.status === 'success') {
+          if (response.data?.status === 'success') {
+            console.log('User loaded from checkAuth:', response.data.data.user.id);
             setUser(response.data.data.user);
-          } else {
-            localStorage.removeItem("token");
-            sessionStorage.removeItem("token");
           }
-        } catch (error) {
-          localStorage.removeItem("token");
-          sessionStorage.removeItem("token");
+        } catch (e) {
+          console.error('Error loading user in checkAuth:', e);
         }
       }
     } catch (err) {
-      localStorage.removeItem("token");
-      sessionStorage.removeItem("token");
+      console.error('Auth check error:', err);
     } finally {
       setLoading(false);
     }
@@ -84,21 +116,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
+      console.log('🔍 Login attempt for:', email);
       setError(null);
-      const response = await authAPI.login({ email, password });
       
-      // Handle the response format correctly
-      if (response.data.status === 'success') {
-        setUser(response.data.data.user);
-        localStorage.setItem("token", response.data.data.token);
-        // Also store in sessionStorage as backup
-        sessionStorage.setItem("token", response.data.data.token);
-        return { success: true };
-      } else {
-        return { success: false, error: response.data.message };
+      // Use client-side Supabase authentication
+      console.log('🔍 Attempting Supabase signInWithPassword...');
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        console.log('❌ Supabase auth error:', error.message);
+        return { success: false, error: error.message };
       }
+
+      if (!data.user) {
+        console.log('❌ No user returned from Supabase');
+        return { success: false, error: 'Authentication failed' };
+      }
+
+      console.log('✅ Supabase authentication successful:', data.user.id);
+
+      // Fetch full user object via server to avoid RLS
+      try {
+        console.log('🔍 Calling authAPI.getMe()...');
+        const response = await authAPI.getMe();
+        console.log('📡 authAPI.getMe() response:', response.data);
+        
+        if (response.data?.status !== 'success') {
+          console.log('❌ getMe failed:', response.data?.message);
+          return { success: false, error: response.data?.message || 'User profile not found' };
+        }
+        
+        const fullUser = response.data.data.user;
+        console.log('✅ User profile loaded:', fullUser.id, fullUser.role);
+
+        // Attempt to update last login (best-effort; ignore errors)
+        try {
+          await supabase
+            .from('profiles')
+            .update({
+              lastlogin: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', fullUser.id);
+          console.log('✅ Last login updated');
+        } catch (updateError) {
+          console.log('⚠️ Last login update failed (ignored):', updateError);
+        }
+
+        setUser(fullUser);
+        console.log('✅ Login completed successfully');
+      } catch (e: any) {
+        console.log('❌ Error in getMe call:', e.message);
+        return { success: false, error: 'User profile not found' };
+      }
+
+      return { success: true };
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || "Login failed";
+      console.log('❌ Login error:', err.message);
+      const errorMessage = err.message || "Login failed";
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -107,20 +185,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (userData: any) => {
     try {
       setError(null);
-      const response = await authAPI.register(userData);
       
-      // Handle the response format correctly
-      if (response.data.status === 'success') {
-        setUser(response.data.data.user);
-        localStorage.setItem("token", response.data.data.token);
-        // Also store in sessionStorage as backup
-        sessionStorage.setItem("token", response.data.data.token);
-        return { success: true };
-      } else {
-        return { success: false, error: response.data.message };
+      // Use client-side Supabase authentication
+      const { data, error } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+        options: {
+          data: {
+            first_name: userData.firstName,
+            last_name: userData.lastName,
+            role: userData.role || 'patient',
+            specialization: userData.specialization,
+            licenseNumber: userData.licenseNumber
+          }
+        }
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
       }
+
+      if (!data.user) {
+        return { success: false, error: 'Registration failed' };
+      }
+
+      // The profile will be automatically created by the database trigger
+      // Set user data
+      setUser({
+        id: data.user.id,
+        email: data.user.email || '',
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        role: userData.role || 'patient',
+        specialization: userData.specialization,
+        licenseNumber: userData.licenseNumber
+      });
+
+      return { success: true };
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || "Registration failed";
+      const errorMessage = err.message || "Registration failed";
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -129,8 +232,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = (redirectToHomepage: boolean = false) => {
     // Clear user data immediately
     setUser(null);
-    localStorage.removeItem("token");
-    sessionStorage.removeItem("token");
+    
+    // Sign out from Supabase
+    supabase.auth.signOut();
     
     // Show logout animation briefly
     setIsLoggingOut(true);
@@ -151,11 +255,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = async (profileData: Partial<User>) => {
     try {
       setError(null);
-      const response = await authAPI.updateProfile(profileData);
-      setUser(response.data.user);
+      
+      if (!user) {
+        return { success: false, error: 'No user logged in' };
+      }
+
+      // Update profile in Supabase
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          first_name: profileData.firstName,
+          last_name: profileData.lastName,
+          specialization: profileData.specialization,
+          licensenumber: profileData.licenseNumber,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      // Update local user state
+      setUser(prev => prev ? { ...prev, ...profileData } : null);
+      
       return { success: true };
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || "Profile update failed";
+      const errorMessage = err.message || "Profile update failed";
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -164,10 +290,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updatePassword = async (currentPassword: string, newPassword: string) => {
     try {
       setError(null);
-      const response = await authAPI.updatePassword({ currentPassword, newPassword });
+      
+      // Update password using Supabase
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
       return { success: true };
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || "Password update failed";
+      const errorMessage = err.message || "Password update failed";
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }

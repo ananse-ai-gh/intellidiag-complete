@@ -3,20 +3,20 @@ import { motion, useAnimation, useInView } from "framer-motion";
 import styled from "styled-components";
 
 const AboutContainer = styled.div`
-  min-height: 96vh;
+  min-height: 100vh;
   color: #fff;
   z-index: 5;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1rem;
+  padding: 120px 20px 80px;
   box-sizing: border-box;
   overflow: hidden;
-  margin-bottom: 40px;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(6, 148, 251, 0.05));
 
   @media (max-width: 768px) {
-    padding: 1rem;
+    padding: 100px 16px 60px;
   }
 `;
 
@@ -27,153 +27,178 @@ const AboutContent = styled(motion.div)`
   flex-direction: column;
   align-items: center;
   text-align: center;
-  width: 80%;
-  max-width: 1261px;
-  gap: 1.4rem;
-  padding: 0 1rem;
+  width: 100%;
+  max-width: 1200px;
+  gap: 60px;
+  padding: 0 20px;
 
   @media (max-width: 768px) {
+    gap: 40px;
     padding: 0;
   }
 `;
 
-const AboutHeading = styled(motion.h1)`
-  font-size: 32px;
-  font-weight: 500;
+const AboutHeading = styled(motion.h2)`
+  font-size: 56px;
+  font-weight: 700;
   text-align: center;
-  line-height: 1.2;
-  margin-bottom: 20px;
+  line-height: 1.1;
+  margin: 0;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 
-  /* Mobile devices (320px - 480px) */
-  @media (min-width: 320px) and (max-width: 480px) {
-    font-size: 28px;
-    width: 280px;
-    margin-bottom: 20px;
-  }
-
-  /* iPads, Tablets (481px - 768px) */
-  @media (min-width: 481px) and (max-width: 768px) {
+  @media (max-width: 768px) {
     font-size: 42px;
-    margin: 0px;
-    width: 100%;
   }
 
-  /* Small screens, laptops (769px - 1024px) */
-  @media (min-width: 769px) and (max-width: 1024px) {
-    font-size: 52px;
-    margin-bottom: 0px;
-  }
-
-  /* Desktops, large screens (1025px - 1200px) */
-  @media (min-width: 1025px) and (max-width: 1200px) {
-    font-size: 50px;
-    margin-bottom: 35px;
-  }
-
-  /* Extra large screens, TV (1201px and more) */
-  @media (min-width: 1201px) {
-    font-size: 60px;
-    margin-bottom: 40px;
+  @media (max-width: 480px) {
+    font-size: 32px;
   }
 `;
 
 const Highlight = styled.span`
-  color: #0094ff;
+  background: linear-gradient(135deg, #0694fb, #0094ff);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  position: relative;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(135deg, #0694fb, #0094ff);
+    border-radius: 1px;
+  }
 `;
 
 const AboutSubheading = styled(motion.p)`
   width: 100%;
-  max-width: 65rem;
-  font-size: clamp(1rem, 1.2vw, 1.2rem);
+  max-width: 800px;
+  font-size: 20px;
   font-weight: 400;
-  color: #9c9c9c;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.6;
+  margin: 0;
+  letter-spacing: 0.005em;
 
-  @media (min-width: 320px) and (max-width: 480px) {
+  @media (max-width: 768px) {
+    font-size: 18px;
+  }
+
+  @media (max-width: 480px) {
     font-size: 16px;
-    margin-top: 0;
-  }
-
-  /* iPads, Tablets (481px - 768px) */
-  @media (min-width: 481px) and (max-width: 768px) {
-    font-size: 22px;
-    margin-bottom: 10px;
-    margin-top: 0px;
-  }
-
-  /* Small screens, laptops (769px - 1024px) */
-  @media (min-width: 769px) and (max-width: 1024px) {
-    font-size: 25px;
-    margin-bottom: 30px;
-  }
-
-  /* Desktops, large screens (1025px - 1200px) */
-  @media (min-width: 1025px) and (max-width: 1200px) {
-    font-size: 20px;
-    margin-bottom: 35px;
-  }
-
-  /* Extra large screens, TV (1201px and more) */
-  @media (min-width: 1201px) {
-    font-size: 25px;
-    margin-top: 0px;
-    margin-bottom: 40px;
   }
 `;
 
-const AboutCardsContainer = styled(motion.div)`
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 1.2rem;
-  margin-top: 1.5rem;
+const StatsContainer = styled(motion.div)`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 40px;
   width: 100%;
+  max-width: 1000px;
+  margin-top: 40px;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
 `;
 
-const AboutCard = styled(motion.div)`
-  height: 25rem;
-  // max-width: 20rem;
-  border-radius: 15px;
-  background-color: #0f0f0f;
+const StatCard = styled(motion.div)`
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 40px 30px;
+  text-align: center;
+  position: relative;
   overflow: hidden;
-  flex: 1 1 300px;
+  transition: all 0.3s ease;
 
-  /* Mobile devices (320px - 480px) */
-  @media (min-width: 320px) and (max-width: 480px) {
-    height: 25rem;
-    max-width: 75%;
-    width: 15rem;
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(6, 148, 251, 0.1), rgba(0, 149, 255, 0.05));
+    opacity: 0;
+    transition: opacity 0.3s ease;
   }
 
-  /* iPads, Tablets (481px - 768px) */
-  @media (min-width: 481px) and (max-width: 768px) {
-    gap: 20px;
-    flex: 1 1 200px;
-    max-width: 290px;
+  &:hover {
+    transform: translateY(-8px);
+    border-color: rgba(6, 148, 251, 0.3);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+
+    &::before {
+      opacity: 1;
+    }
   }
 
-  /* Small screens, laptops (769px - 1024px) */
-  @media (min-width: 769px) and (max-width: 1024px) {
-    flex: 1 1 290px;
-    height: 400px;
-    max-width: 310px;
-  }
-
-  /* Desktops, large screens (1025px - 1200px) */
-  @media (min-width: 1025px) and (max-width: 1200px) {
-  }
-
-  /* Extra large screens, TV (1201px and more) */
-  @media (min-width: 1201px) {
+  @media (max-width: 768px) {
+    padding: 30px 20px;
   }
 `;
 
-const AboutCardImage = styled.img`
-  height: 100%;
-  width: 100%;
-  object-fit: cover;
-  display: block;
-  object-position: center;
+const StatNumber = styled.div`
+  font-size: 48px;
+  font-weight: 700;
+  color: #0694fb;
+  margin-bottom: 12px;
+  line-height: 1;
+  position: relative;
+  z-index: 2;
+
+  @media (max-width: 768px) {
+    font-size: 40px;
+  }
+`;
+
+const StatLabel = styled.div`
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: relative;
+  z-index: 2;
+`;
+
+const StatDescription = styled.div`
+  font-size: 14px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 8px;
+  line-height: 1.4;
+  position: relative;
+  z-index: 2;
+`;
+
+const MedicalIcon = styled(motion.div)`
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #0694fb, #0094ff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 8px 24px rgba(6, 148, 251, 0.3);
+
+  svg {
+    width: 40px;
+    height: 40px;
+    color: white;
+  }
 `;
 
 function About() {
@@ -186,6 +211,29 @@ function About() {
       controls.start("visible");
     }
   }, [isInView, controls]);
+
+  const stats = [
+    {
+      number: "99.7%",
+      label: "Accuracy Rate",
+      description: "AI-powered diagnostic precision"
+    },
+    {
+      number: "50ms",
+      label: "Analysis Speed",
+      description: "Real-time medical imaging results"
+    },
+    {
+      number: "10K+",
+      label: "Cases Analyzed",
+      description: "Successfully processed medical scans"
+    },
+    {
+      number: "24/7",
+      label: "Availability",
+      description: "Round-the-clock diagnostic support"
+    }
+  ];
 
   return (
     <AboutContainer ref={ref}>
@@ -200,6 +248,21 @@ function About() {
           },
         }}
       >
+        <MedicalIcon
+          variants={{
+            hidden: { opacity: 0, scale: 0.8 },
+            visible: {
+              opacity: 1,
+              scale: 1,
+              transition: { duration: 0.8, ease: [0.2, 0.65, 0.3, 0.9] },
+            },
+          }}
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+          </svg>
+        </MedicalIcon>
+
         <AboutHeading
           variants={{
             hidden: { opacity: 0, y: 40 },
@@ -210,8 +273,8 @@ function About() {
             },
           }}
         >
-          We dreamed of better diagnostics, so we built{" "}
-          <Highlight>intelliDiag</Highlight> for everyone.
+          Revolutionizing Medical{" "}
+          <Highlight>Diagnostics</Highlight> with AI
         </AboutHeading>
 
         <AboutSubheading
@@ -224,24 +287,24 @@ function About() {
             },
           }}
         >
-          Built by award-winning medical researchers, engineers and developers,
-          IntelliDiag gives you access to the tools, models, and methods behind
-          our breakthrough diagnostic platform. Analyze, adapt, and expand.
-          whether you&apos;re a researcher, developer, or healthcare provider.
+          IntelliDiag harnesses cutting-edge artificial intelligence to provide 
+          instant, accurate medical imaging analysis. Our platform empowers 
+          healthcare professionals with AI-driven insights, reducing diagnostic 
+          time while maintaining the highest standards of medical accuracy.
         </AboutSubheading>
 
-        <AboutCardsContainer
+        <StatsContainer
           variants={{
             hidden: { opacity: 0 },
             visible: {
               opacity: 1,
-              transition: { staggerChildren: 0.1, delayChildren: 0.3 },
+              transition: { staggerChildren: 0.1, delayChildren: 0.8 },
             },
           }}
         >
-          {[1, 2, 3].map((item) => (
-            <AboutCard
-              key={item}
+          {stats.map((stat, index) => (
+            <StatCard
+              key={index}
               variants={{
                 hidden: { opacity: 0, y: 20 },
                 visible: { opacity: 1, y: 0 },
@@ -249,10 +312,12 @@ function About() {
               whileHover={{ scale: 1.05 }}
               transition={{ type: "spring", stiffness: 400 }}
             >
-              <AboutCardImage src={`card${item}.webp`} alt="Diagnostic tools" />
-            </AboutCard>
+              <StatNumber>{stat.number}</StatNumber>
+              <StatLabel>{stat.label}</StatLabel>
+              <StatDescription>{stat.description}</StatDescription>
+            </StatCard>
           ))}
-        </AboutCardsContainer>
+        </StatsContainer>
       </AboutContent>
     </AboutContainer>
   );

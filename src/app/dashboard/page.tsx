@@ -11,6 +11,7 @@ export default function DashboardPage() {
   const router = useRouter();
 
   useEffect(() => {
+    // Only redirect if we're sure about the user state (not loading) and user exists
     if (!loading && user) {
       // Redirect to role-specific dashboard
       switch (user.role) {
@@ -33,22 +34,26 @@ export default function DashboardPage() {
     }
   }, [user, loading, router]);
 
-  // Show loading while redirecting
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black text-white">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p>Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Fallback dashboard for unknown roles
   return (
     <ProtectedRoute>
-      <Dashboard />
+      {/* Show loading while checking authentication and redirecting */}
+      {loading ? (
+        <div className="min-h-screen flex items-center justify-center bg-black text-white">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p>Loading dashboard...</p>
+          </div>
+        </div>
+      ) : user ? (
+        <div className="min-h-screen flex items-center justify-center bg-black text-white">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p>Redirecting...</p>
+          </div>
+        </div>
+      ) : (
+        <Dashboard />
+      )}
     </ProtectedRoute>
   );
 }

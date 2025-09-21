@@ -1,22 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hybridDb } from '@/lib/hybridDatabase';
-import jwt from 'jsonwebtoken';
+import { db } from '@/lib/database';
+import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-
-// Helper function to verify JWT token
-const verifyToken = (request: NextRequest) => {
+// Helper function to verify Supabase session
+const verifySupabaseSession = async (request: NextRequest) => {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return null;
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: string; role: string };
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (error || !user) return null;
+
+        // Get user profile to check role and active status
+        const profile = await db.getProfileById(user.id);
+        if (!profile || !profile.isactive) return null;
+
+        return { user, profile };
     } catch (error) {
         return null;
     }
@@ -25,17 +30,19 @@ const verifyToken = (request: NextRequest) => {
 // GET /api/dashboard
 export async function GET(request: NextRequest) {
     try {
-        // For now, make authentication optional for testing
-        const user = verifyToken(request);
-
-        // If no user is authenticated, we'll still return data (for testing)
-        // In production, you should require authentication
-        if (!user) {
-            console.log('No authenticated user found, proceeding without authentication');
+        // Verify authentication
+        const authResult = await verifySupabaseSession(request);
+        if (!authResult) {
+            return NextResponse.json(
+                { status: 'error', message: 'Authentication required' },
+                { status: 401 }
+            );
         }
 
-        // Get dashboard statistics using hybrid database
-        const stats = await hybridDb.getDashboardStats() as {
+        const { user, profile } = authResult;
+
+        // Get dashboard statistics using Supabase database
+        const stats = await db.getDashboardStats() as {
             totalUsers: number;
             totalPatients: number;
             totalScans: number;
@@ -43,7 +50,7 @@ export async function GET(request: NextRequest) {
         };
 
         // Get recent scans
-        const recentScans = await hybridDb.getAllScans();
+        const recentScans = await db.getAllScans();
         const recentScansLimited = recentScans.slice(0, 10);
 
         // Get recent cases (scans with status)

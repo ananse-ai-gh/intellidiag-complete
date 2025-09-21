@@ -52,7 +52,7 @@ function PageContent({ dashboardData }: PageContentProps) {
       <div
         style={{
           width: '100%',
-          height: '100%',
+          minHeight: '100%',
           overflow: 'auto',
         }}
       >
@@ -73,14 +73,11 @@ function PageContent({ dashboardData }: PageContentProps) {
     <div
       style={{
         boxSizing: "border-box",
-        width: "90%",
-        height: "95%",
-        marginTop: "20px",
-        gap: "40px",
+        width: "100%",
+        padding: "8px 8px 24px 8px",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "flex-start",
-        alignItems: "stretch",
+        gap: "24px"
       }}
     >
       <Topsection dashboardData={dashboardData} />

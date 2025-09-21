@@ -57,6 +57,12 @@
   --container-2xl: 1536px;
 }
 
+/* Smooth scrolling with navbar offset */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 100px; /* Account for fixed navbar */
+}
+
 html,
 body {
   max-width: 100vw;

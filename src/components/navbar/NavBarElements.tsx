@@ -7,24 +7,25 @@ export const NavbarContainer = styled.div`
   display: flex;
   justify-content: center;
   width: 100%;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 8px 0;
-  position: sticky;
-  top: 0;
+  position: fixed;
+  top: 20px;
+  left: 0;
+  right: 0;
   z-index: 100;
+  padding: 0 20px;
 
   @media (min-width: 640px) {
-    padding: 10px 0;
+    padding: 0 40px;
+  }
+
+  @media (min-width: 768px) {
+    padding: 0 60px;
   }
 `;
 
-export const Nav = styled.nav`
+export const Nav = styled.nav<{ isScrolled: boolean }>`
   height: 60px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
   font-size: 1rem;
   font-family: var(--font-primary);
@@ -32,16 +33,35 @@ export const Nav = styled.nav`
   z-index: 10;
   width: 100%;
   max-width: 1200px;
-  padding: 0 var(--spacing-md);
+  background: ${props => props.isScrolled 
+    ? 'rgba(255, 255, 255, 0.08)' 
+    : 'rgba(255, 255, 255, 0.05)'};
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid ${props => props.isScrolled 
+    ? 'rgba(255, 255, 255, 0.15)' 
+    : 'rgba(255, 255, 255, 0.1)'};
+  border-radius: 50px;
+  padding: 0 30px;
+  box-shadow: ${props => props.isScrolled 
+    ? '0 12px 40px rgba(0, 0, 0, 0.15)' 
+    : '0 8px 32px rgba(0, 0, 0, 0.1)'};
+  transition: all 0.3s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+  }
 
   @media (min-width: 640px) {
     height: 70px;
-    padding: 0 var(--spacing-lg);
+    padding: 0 40px;
   }
 
   @media (min-width: 768px) {
     height: 80px;
-    justify-content: center;
+    padding: 0 50px;
   }
 
   @media screen and (max-width: 960px) {
@@ -53,18 +73,29 @@ export const LogoContainer = styled.div`
   display: flex;
   align-items: center;
   z-index: 1001;
+  margin-right: 60px;
 
   img {
-    height: 24px;
+    height: auto;
+    width: auto;
+    max-height: 32px;
+    max-width: 120px;
+    object-fit: contain;
     transition: all 0.3s ease;
 
     @media (min-width: 640px) {
-      height: 28px;
+      max-height: 36px;
+      max-width: 140px;
     }
 
     @media (min-width: 768px) {
-      height: 30px;
+      max-height: 40px;
+      max-width: 160px;
     }
+  }
+
+  @media (max-width: 768px) {
+    margin-right: 20px;
   }
 `;
 
@@ -73,47 +104,31 @@ export const NavLink = styled(Link)`
   display: flex;
   align-items: center;
   text-decoration: none;
-  padding: 12px 16px;
+  padding: 8px 16px;
   cursor: pointer;
-  transition: all 0.2s ease-in-out;
+  transition: all 0.3s ease;
   position: relative;
   font-weight: 500;
-  font-size: var(--text-base);
-  border-radius: 8px;
-  margin: 4px 0;
+  font-size: 15px;
+  border-radius: 25px;
+  margin: 0 4px;
 
   @media (min-width: 768px) {
-    padding: 0 1rem;
-    height: 100%;
-    margin: 0;
-    border-radius: 0;
+    padding: 10px 20px;
+    font-size: 16px;
   }
 
   &:hover {
     color: #0094FF;
-    background: rgba(255, 255, 255, 0.05);
-    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 148, 255, 0.2);
   }
 
   &.active {
     color: #0094FF;
-    background: rgba(6, 148, 251, 0.1);
-  }
-
-  &.active::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 100%;
-    height: 3px;
-    background: #0094FF;
-    border-radius: 2px;
-    
-    @media (max-width: 767px) {
-      display: none;
-    }
+    background: rgba(0, 148, 255, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 148, 255, 0.3);
   }
 `;
 
@@ -122,11 +137,12 @@ export const NavMenu = styled.div<{ isOpen: boolean }>`
   align-items: center;
   list-style: none;
   text-align: center;
-  margin-right: 1rem;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
 
   @media (min-width: 768px) {
     display: flex;
-    margin-right: 2rem;
   }
 `;
 
@@ -274,6 +290,7 @@ export const AuthButtons = styled.div`
   display: flex;
   gap: 12px;
   align-items: center;
+  margin-left: 20px;
 
   @media (min-width: 640px) {
     gap: 16px;
@@ -281,28 +298,31 @@ export const AuthButtons = styled.div`
 
   @media (min-width: 768px) {
     gap: 20px;
+    margin-left: 40px;
   }
 `;
 
 export const LoginButton = styled.button`
-  background: none;
-  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   color: #fff;
   cursor: pointer;
-  font-size: var(--text-sm);
+  font-size: 14px;
   font-weight: 500;
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: 10px 20px;
+  border-radius: 25px;
   transition: all 0.3s ease;
 
   &:hover {
     background: rgba(255, 255, 255, 0.1);
-    transform: translateY(-1px);
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
   }
 
   @media (min-width: 640px) {
-    font-size: var(--text-base);
-    padding: 10px 16px;
+    font-size: 15px;
+    padding: 12px 24px;
   }
 `;
 
@@ -310,22 +330,27 @@ export const SignUpButton = styled.button`
   background: linear-gradient(135deg, #0694fb, #0094ff);
   border: none;
   color: #fff;
-  padding: 8px 16px;
-  border-radius: 6px;
+  padding: 10px 20px;
+  border-radius: 25px;
   cursor: pointer;
-  font-size: var(--text-sm);
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(6, 148, 251, 0.3);
 
   &:hover {
+    background: linear-gradient(135deg, #0580d6, #0078e6);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(6, 148, 251, 0.3);
+    box-shadow: 0 6px 20px rgba(6, 148, 251, 0.4);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 
   @media (min-width: 640px) {
-    font-size: var(--text-base);
-    padding: 10px 20px;
-    border-radius: 8px;
+    font-size: 15px;
+    padding: 12px 24px;
   }
 `;
 

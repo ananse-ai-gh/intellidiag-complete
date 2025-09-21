@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { hybridDb } from '@/lib/hybridDatabase';
+import { db } from '@/lib/database';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -9,7 +9,7 @@ export const fetchCache = 'force-no-store';
 export async function GET() {
     try {
         // Test database connection
-        const isHealthy = await hybridDb.healthCheck();
+        const isHealthy = await db.healthCheck();
 
         if (!isHealthy) {
             throw new Error('Database connection failed');

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hybridDb } from '@/lib/hybridDatabase';
-import jwt from 'jsonwebtoken';
+import { db } from '@/lib/database';
+import { supabase } from '@/lib/supabase';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { scanQueueManager } from '@/services/scanQueueManager';
@@ -9,17 +9,17 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-
-// Helper function to verify JWT token
-const verifyToken = (request: NextRequest) => {
+// Helper function to verify Supabase session
+const verifyToken = async (request: NextRequest) => {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return null;
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: string };
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (error || !user) return null;
+        return user;
     } catch (error) {
         return null;
     }
@@ -29,7 +29,7 @@ const verifyToken = (request: NextRequest) => {
 export async function POST(request: NextRequest) {
     try {
         // Verify authentication
-        const user = verifyToken(request);
+        const user = await verifyToken(request);
         if (!user) {
             return NextResponse.json(
                 { status: 'error', message: 'Authentication required' },
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Validate patient exists
-        const patient = await hybridDb.getPatientById(patientId);
+        const patient = await db.getPatientById(patientId);
         if (!patient) {
             return NextResponse.json(
                 { status: 'error', message: 'Patient not found' },
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Create scan in database
-        const scan = await hybridDb.createScan({
+        const scan = await db.createScan({
             patient_id: patientId,
             scan_type: scanType,
             body_part: bodyPart,
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
         });
 
         // Create initial AI analysis record
-        await hybridDb.createAnalysis({
+        await db.createAnalysis({
             scan_id: scan.id,
             analysis_type: analysisType || 'auto',
             status: 'pending',
@@ -170,7 +170,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
     try {
         // Verify authentication
-        const user = verifyToken(request);
+        const user = await verifyToken(request);
         if (!user) {
             return NextResponse.json(
                 { status: 'error', message: 'Authentication required' },
@@ -187,7 +187,7 @@ export async function GET(request: NextRequest) {
         const patientId = searchParams.get('patientId');
 
         // Get all scans
-        let allScans = await hybridDb.getAllScans();
+        let allScans = await db.getAllScans();
 
         // Apply filters
         if (status) {
@@ -206,8 +206,8 @@ export async function GET(request: NextRequest) {
 
         // Transform to expected format
         const scans = await Promise.all(paginatedScans.map(async (scan) => {
-            const patient = await hybridDb.getPatientById(scan.patient_id);
-            const analyses = await hybridDb.getAnalysesByScanId(scan.id);
+            const patient = await db.getPatientById(scan.patient_id);
+            const analyses = await db.getAnalysesByScanId(scan.id);
             const analysis = analyses[0];
 
             return {
@@ -285,14 +285,14 @@ export async function PUT(request: NextRequest) {
         }
 
         // Update scan in database
-        const updatedScan = await hybridDb.updateScan(scanId, {
+        const updatedScan = await db.updateScan(scanId, {
             scan_type: scanType,
             body_part: bodyPart,
             priority: priority as 'low' | 'medium' | 'high' | 'urgent'
         });
 
         // Get patient details
-        const patient = await hybridDb.getPatientById(updatedScan.patient_id);
+        const patient = await db.getPatientById(updatedScan.patient_id);
 
         // Transform to expected format
         const scanData = {

@@ -40,25 +40,28 @@ export default function ProtectedRoute({ children, requiredRole = null }: Protec
   const router = useRouter();
 
   useEffect(() => {
+    // Only redirect if we're sure the user is not authenticated (not loading)
     if (!loading && !isAuthenticated) {
       router.push('/');
     }
   }, [loading, isAuthenticated, router]);
 
   useEffect(() => {
-    if (!loading && isAuthenticated && requiredRole) {
-      if (requiredRole === 'admin' && user?.role !== 'admin') {
+    // Only check role permissions if we're authenticated and not loading
+    if (!loading && isAuthenticated && user && requiredRole) {
+      if (requiredRole === 'admin' && user.role !== 'admin') {
         router.push('/dashboard');
-      } else if (requiredRole === 'doctor' && !["admin", "doctor"].includes(user?.role || "")) {
+      } else if (requiredRole === 'doctor' && !["admin", "doctor"].includes(user.role)) {
         router.push('/dashboard');
-      } else if (requiredRole === 'radiologist' && !["admin", "radiologist"].includes(user?.role || "")) {
+      } else if (requiredRole === 'radiologist' && !["admin", "radiologist"].includes(user.role)) {
         router.push('/dashboard');
-      } else if (requiredRole === 'patient' && !["admin", "patient"].includes(user?.role || "")) {
+      } else if (requiredRole === 'patient' && !["admin", "patient"].includes(user.role)) {
         router.push('/dashboard');
       }
     }
   }, [loading, isAuthenticated, user, requiredRole, router]);
 
+  // Show loading while checking authentication
   if (loading) {
     return (
       <LoadingContainer>
@@ -68,18 +71,20 @@ export default function ProtectedRoute({ children, requiredRole = null }: Protec
     );
   }
 
+  // Don't render anything if not authenticated (will redirect)
   if (!isAuthenticated) {
     return null;
   }
 
-  if (requiredRole) {
-    if (requiredRole === 'admin' && user?.role !== 'admin') {
+  // Check role permissions
+  if (requiredRole && user) {
+    if (requiredRole === 'admin' && user.role !== 'admin') {
       return null;
-    } else if (requiredRole === 'doctor' && !["admin", "doctor"].includes(user?.role || "")) {
+    } else if (requiredRole === 'doctor' && !["admin", "doctor"].includes(user.role)) {
       return null;
-    } else if (requiredRole === 'radiologist' && !["admin", "radiologist"].includes(user?.role || "")) {
+    } else if (requiredRole === 'radiologist' && !["admin", "radiologist"].includes(user.role)) {
       return null;
-    } else if (requiredRole === 'patient' && !["admin", "patient"].includes(user?.role || "")) {
+    } else if (requiredRole === 'patient' && !["admin", "patient"].includes(user.role)) {
       return null;
     }
   }

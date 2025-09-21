@@ -10,7 +10,7 @@ interface MaincontentProps {
 
 const MainContainer = styled.div`
   width: 100%;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -26,21 +26,18 @@ const MainContainer = styled.div`
 
   @media (min-width: 768px) {
     flex-direction: row;
-    gap: 30px;
-    margin-top: 15px;
+    gap: 24px;
+    margin-top: 12px;
     padding: 0;
   }
 `;
 
 const ContentArea = styled.div`
   flex: 1;
-  overflow: hidden;
+  min-height: 0; /* allow child to size and scroll */
+  overflow: auto; /* single scroll container */
   display: flex;
   flex-direction: column;
-
-  @media (min-width: 768px) {
-    overflow: auto;
-  }
 `;
 
 function Maincontent({ dashboardData }: MaincontentProps) {

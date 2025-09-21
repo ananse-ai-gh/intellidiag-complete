@@ -1,23 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hybridDb } from '@/lib/hybridDatabase';
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
+import { db } from '@/lib/supabaseProfilesDatabase';
+import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-
-// Helper function to verify JWT token
-const verifyToken = (request: NextRequest) => {
+// Helper function to verify Supabase session
+const verifySupabaseSession = async (request: NextRequest) => {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return null;
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: string; role: string };
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (error || !user) return null;
+
+        // Get user profile to check role and active status
+        const profile = await db.getProfileById(user.id);
+        if (!profile || !profile.isactive) return null;
+
+        return { user, profile };
     } catch (error) {
         return null;
     }
@@ -29,14 +33,15 @@ export async function GET(
     { params }: { params: { id: string } }
 ) {
     try {
-        const user = verifyToken(request);
-        if (!user) {
+        const authResult = await verifySupabaseSession(request);
+        if (!authResult) {
             return NextResponse.json(
                 { status: 'error', message: 'Unauthorized' },
                 { status: 401 }
             );
         }
 
+        const { user, profile } = authResult;
         const userId = params.id;
         if (!userId) {
             return NextResponse.json(
@@ -46,16 +51,16 @@ export async function GET(
         }
 
         // Only allow users to view their own profile or admin to view any profile
-        if (user.id !== userId && user.role !== 'admin') {
+        if (user.id !== userId && profile.role !== 'admin') {
             return NextResponse.json(
                 { status: 'error', message: 'Forbidden' },
                 { status: 403 }
             );
         }
 
-        const userData = await hybridDb.getUserById(userId);
+        const userProfile = await db.getProfileById(userId);
 
-        if (!userData) {
+        if (!userProfile) {
             return NextResponse.json(
                 { status: 'error', message: 'User not found' },
                 { status: 404 }
@@ -66,18 +71,17 @@ export async function GET(
             status: 'success',
             data: {
                 user: {
-                    id: userData.id,
-                    email: userData.email,
-                    firstName: userData.first_name,
-                    lastName: userData.last_name,
-                    role: userData.role,
-                    specialization: userData.specialization,
-                    licenseNumber: userData.licenseNumber,
-                    isActive: userData.isActive,
-                    lastLogin: userData.lastLogin,
-                    profileImage: userData.profileImage,
-                    createdAt: userData.created_at,
-                    updatedAt: userData.updated_at
+                    id: userProfile.id,
+                    email: user.email,
+                    firstName: user.user_metadata?.first_name || user.email.split('@')[0],
+                    lastName: user.user_metadata?.last_name || '',
+                    role: userProfile.role,
+                    specialization: userProfile.specialization,
+                    licenseNumber: userProfile.licensenumber,
+                    isActive: userProfile.isactive,
+                    lastLogin: userProfile.lastlogin,
+                    createdAt: user.created_at,
+                    updatedAt: userProfile.updated_at
                 }
             }
         });
@@ -97,14 +101,15 @@ export async function PUT(
     { params }: { params: { id: string } }
 ) {
     try {
-        const user = verifyToken(request);
-        if (!user) {
+        const authResult = await verifySupabaseSession(request);
+        if (!authResult) {
             return NextResponse.json(
                 { status: 'error', message: 'Unauthorized' },
                 { status: 401 }
             );
         }
 
+        const { user, profile } = authResult;
         const userId = params.id;
         if (!userId) {
             return NextResponse.json(
@@ -114,7 +119,7 @@ export async function PUT(
         }
 
         // Only allow users to update their own profile or admin to update any profile
-        if (user.id !== userId && user.role !== 'admin') {
+        if (user.id !== userId && profile.role !== 'admin') {
             return NextResponse.json(
                 { status: 'error', message: 'Forbidden' },
                 { status: 403 }
@@ -128,13 +133,12 @@ export async function PUT(
             email,
             role,
             specialization,
-            licenseNumber,
-            password
+            licenseNumber
         } = body;
 
         // Check if user exists
-        const existingUser = await hybridDb.getUserById(userId);
-        if (!existingUser) {
+        const existingProfile = await db.getProfileById(userId);
+        if (!existingProfile) {
             return NextResponse.json(
                 { status: 'error', message: 'User not found' },
                 { status: 404 }
@@ -142,18 +146,9 @@ export async function PUT(
         }
 
         // Validation
-        if (!firstName || !lastName || !email) {
+        if (!firstName || !lastName) {
             return NextResponse.json(
                 { status: 'error', message: 'Please provide all required fields' },
-                { status: 400 }
-            );
-        }
-
-        // Check if email is already taken by another user
-        const emailCheck = await hybridDb.getUserByEmail(email);
-        if (emailCheck && emailCheck.id !== userId) {
-            return NextResponse.json(
-                { status: 'error', message: 'Email already exists' },
                 { status: 400 }
             );
         }
@@ -162,41 +157,33 @@ export async function PUT(
         const updateData: any = {
             first_name: firstName,
             last_name: lastName,
-            email: email,
             specialization: specialization,
-            licenseNumber: licenseNumber
+            licensenumber: licenseNumber
         };
 
         // Only admin can change role
-        if (user.role === 'admin' && role) {
+        if (profile.role === 'admin' && role) {
             updateData.role = role as 'admin' | 'doctor' | 'radiologist' | 'patient';
         }
 
-        // Update password if provided
-        if (password) {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            updateData.password = hashedPassword;
-        }
-
-        // Update user
-        const updatedUser = await hybridDb.updateUser(userId, updateData);
+        // Update profile
+        const updatedProfile = await db.updateProfile(userId, updateData);
 
         return NextResponse.json({
             status: 'success',
             data: {
                 user: {
-                    id: updatedUser.id,
-                    email: updatedUser.email,
-                    firstName: updatedUser.first_name,
-                    lastName: updatedUser.last_name,
-                    role: updatedUser.role,
-                    specialization: updatedUser.specialization,
-                    licenseNumber: updatedUser.licenseNumber,
-                    isActive: updatedUser.isActive,
-                    lastLogin: updatedUser.lastLogin,
-                    profileImage: updatedUser.profileImage,
-                    createdAt: updatedUser.created_at,
-                    updatedAt: updatedUser.updated_at
+                    id: updatedProfile.id,
+                    email: user.email,
+                    firstName: updatedProfile.first_name,
+                    lastName: updatedProfile.last_name,
+                    role: updatedProfile.role,
+                    specialization: updatedProfile.specialization,
+                    licenseNumber: updatedProfile.licensenumber,
+                    isActive: updatedProfile.isactive,
+                    lastLogin: updatedProfile.lastlogin,
+                    createdAt: user.created_at,
+                    updatedAt: updatedProfile.updated_at
                 }
             }
         });
@@ -216,14 +203,15 @@ export async function DELETE(
     { params }: { params: { id: string } }
 ) {
     try {
-        const user = verifyToken(request);
-        if (!user) {
+        const authResult = await verifySupabaseSession(request);
+        if (!authResult) {
             return NextResponse.json(
                 { status: 'error', message: 'Unauthorized' },
                 { status: 401 }
             );
         }
 
+        const { user, profile } = authResult;
         const userId = params.id;
         if (!userId) {
             return NextResponse.json(
@@ -233,7 +221,7 @@ export async function DELETE(
         }
 
         // Only admin can delete users
-        if (user.role !== 'admin') {
+        if (profile.role !== 'admin') {
             return NextResponse.json(
                 { status: 'error', message: 'Forbidden' },
                 { status: 403 }
@@ -249,17 +237,17 @@ export async function DELETE(
         }
 
         // Check if user exists
-        const existingUser = await hybridDb.getUserById(userId);
-        if (!existingUser) {
+        const existingProfile = await db.getProfileById(userId);
+        if (!existingProfile) {
             return NextResponse.json(
                 { status: 'error', message: 'User not found' },
                 { status: 404 }
             );
         }
 
-        // Soft delete - set isActive to false
-        await hybridDb.updateUser(userId, {
-            isActive: false
+        // Soft delete - set isactive to false
+        await db.updateProfile(userId, {
+            isactive: false
         });
 
         return NextResponse.json({

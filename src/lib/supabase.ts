@@ -1,150 +1,75 @@
 import { createClient } from '@supabase/supabase-js'
-import sqlite3 from 'sqlite3'
-import path from 'path'
-import fs from 'fs'
 
-// Environment-based database selection
-const isProduction = process.env.NODE_ENV === 'production'
-const useSupabase = process.env.USE_SUPABASE === 'true' || isProduction
+// Always use Supabase
+const useSupabase = true
 
 // Supabase configuration - using Netlify-provided variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_DATABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
 
-// Only create Supabase client if we have valid credentials
+// Always create Supabase clients
 let supabase: any = null
 let createServerSupabaseClient: any = null
 
-if (supabaseUrl && supabaseUrl !== 'https://placeholder.supabase.co' && supabaseAnonKey && supabaseAnonKey !== 'placeholder-key') {
-    // Client-side Supabase client (for auth)
-    supabase = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-            autoRefreshToken: true,
-            persistSession: true,
-            detectSessionInUrl: true
-        }
-    })
-
-    // Server-side Supabase client (for admin operations)
-    createServerSupabaseClient = () => {
-        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key'
-        return createClient(supabaseUrl, supabaseServiceKey, {
-            auth: {
-                autoRefreshToken: false,
-                persistSession: false
-            }
-        })
+// Client-side Supabase client (for auth)
+supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
     }
-} else {
-    // Create mock clients for build time
-    supabase = {
-        from: () => ({ select: () => ({ eq: () => ({ data: [], error: null }) }) }),
-        auth: {
-            signUp: () => Promise.resolve({ data: null, error: null }),
-            signIn: () => Promise.resolve({ data: null, error: null }),
-            signOut: () => Promise.resolve({ error: null }),
-            getUser: () => Promise.resolve({ data: null, error: null })
-        }
-    }
+})
 
-    createServerSupabaseClient = () => ({
-        from: () => ({ select: () => ({ eq: () => ({ data: [], error: null }) }) }),
-        auth: { signIn: () => Promise.resolve({ data: null, error: null }) }
+// Server-side Supabase client (for admin operations)
+createServerSupabaseClient = () => {
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key'
+    return createClient(supabaseUrl, supabaseServiceKey, {
+        auth: {
+            autoRefreshToken: false,
+            persistSession: false
+        }
     })
 }
 
 export { supabase, createServerSupabaseClient }
 
-// SQLite configuration for development
-let sqliteDb: sqlite3.Database | null = null
-
-const initSQLite = () => {
-    if (sqliteDb) return sqliteDb
-
-    const dataDir = path.join(process.cwd(), 'data')
-    if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true })
-    }
-
-    const dbPath = path.join(dataDir, 'intellidiag.db')
-
-    sqliteDb = new sqlite3.Database(dbPath, (err) => {
-        if (err) {
-            console.error('Error opening SQLite database:', err.message)
-        } else {
-            console.log('Connected to SQLite database at:', dbPath)
-            sqliteDb?.run('PRAGMA foreign_keys = ON')
-        }
-    })
-
-    return sqliteDb
-}
-
-// Explicit getter for SQLite connection (used by health checks and dev-only paths)
-export const getSQLiteDb = () => {
-    // Skip SQLite initialization during build time
-    if (process.env.NODE_ENV === 'production') {
-        return null // Skip during build
-    }
-    return initSQLite()
-}
-
-// Database selection function
+// Database selection function - always returns Supabase client
 export const getDatabase = () => {
-    if (useSupabase) {
-        return createServerSupabaseClient()
-    } else {
-        return initSQLite()
-    }
+    return createServerSupabaseClient()
 }
 
 // Database types for TypeScript
 export interface Database {
     public: {
         Tables: {
-            users: {
+            profiles: {
                 Row: {
                     id: string
-                    email: string
-                    first_name: string
-                    last_name: string
                     role: 'admin' | 'doctor' | 'radiologist' | 'patient'
-                    password?: string
-                    isActive?: boolean
-                    lastLogin?: string
                     specialization?: string
-                    licenseNumber?: string
-                    profileImage?: string
+                    licensenumber?: string
+                    isactive: boolean
+                    lastlogin?: string
                     created_at: string
                     updated_at: string
                 }
                 Insert: {
-                    id?: string
-                    email: string
-                    first_name: string
-                    last_name: string
+                    id: string
                     role: 'admin' | 'doctor' | 'radiologist' | 'patient'
-                    password?: string
-                    isActive?: boolean
-                    lastLogin?: string
                     specialization?: string
-                    licenseNumber?: string
-                    profileImage?: string
+                    licensenumber?: string
+                    isactive?: boolean
+                    lastlogin?: string
                     created_at?: string
                     updated_at?: string
                 }
                 Update: {
                     id?: string
-                    email?: string
-                    first_name?: string
-                    last_name?: string
                     role?: 'admin' | 'doctor' | 'radiologist' | 'patient'
-                    password?: string
-                    isActive?: boolean
-                    lastLogin?: string
                     specialization?: string
-                    licenseNumber?: string
-                    profileImage?: string
+                    licensenumber?: string
+                    isactive?: boolean
+                    lastlogin?: string
                     created_at?: string
                     updated_at?: string
                 }

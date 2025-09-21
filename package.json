@@ -14,13 +14,16 @@
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
+    "@react-three/drei": "^10.7.6",
+    "@react-three/fiber": "^9.3.0",
     "@supabase/supabase-js": "^2.57.4",
     "@types/pg": "^8.15.5",
     "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",
-    "framer-motion": "^12.18.1",
+    "framer-motion": "^12.23.13",
     "gsap": "^3.13.0",
     "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.544.0",
     "multer": "^1.4.5-lts.1",
     "next": "14.0.4",
     "pg": "^8.16.3",
@@ -30,6 +33,7 @@
     "sharp": "^0.33.1",
     "sqlite3": "^5.1.6",
     "styled-components": "^6.1.19",
+    "three": "^0.180.0",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

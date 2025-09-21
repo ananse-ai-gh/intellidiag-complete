@@ -5,13 +5,18 @@ import gsap from "gsap";
 import ScrollTrigger from "gsap/ScrollTrigger";
 import Navbar from "@/components/navbar/Navbar";
 import Homepage from "@/components/home";
+import Features from "@/components/features";
 import About from "@/components/about";
 import Partners from "@/components/partners";
 import Reach from "@/components/reach_us";
 import Footer from "@/components/navbar/footer";
-import Features from "@/components/features";
 import CustomCursor from "@/components/cursor";
 import Partners2 from "@/components/partners2";
+import Testimonials from "@/components/testimonials";
+import Pricing from "@/components/pricing";
+import Demo from "@/components/demo";
+import Newsletter from "@/components/newsletter";
+import CallToAction from "@/components/call-to-action";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -128,6 +133,7 @@ export default function Home() {
 
     // 4. Handle page refresh and visibility changes
     const handleLoad = () => {
+      console.log('Page load event triggered');
       forceRender();
       // Extra safety check after all resources load
       setTimeout(forceRender, 300);
@@ -137,6 +143,7 @@ export default function Home() {
     window.addEventListener("resize", render);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
+        console.log('Page visibility changed to visible');
         forceRender();
       }
     });
@@ -198,14 +205,26 @@ export default function Home() {
           }}
         />
 
-        {/* Content with top margin to account for fixed navbar */}
-        <div style={{ zIndex: 3, marginTop: "80px", minHeight: "calc(100vh - 80px)" }}>
-          <Homepage />
-          <About />
-          <Partners2 />
-          <Reach />
-          <Footer />
-        </div>
+             {/* Content with top margin to account for fixed navbar */}
+             <div style={{ zIndex: 3, marginTop: "80px", minHeight: "calc(100vh - 80px)" }}>
+               <Homepage />
+               <div id="about">
+                 <About />
+               </div>
+               <div id="features">
+                 <Features />
+               </div>
+               <Partners2 />
+               <Testimonials />
+               <Pricing />
+               <Demo />
+               <Newsletter />
+               <CallToAction />
+               <div id="contact">
+                 <Reach />
+               </div>
+               <Footer />
+             </div>
       </div>
     </div>
   );

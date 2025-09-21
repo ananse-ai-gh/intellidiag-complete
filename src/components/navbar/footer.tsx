@@ -4,13 +4,25 @@ import Link from 'next/link';
 import styled from 'styled-components';
 
 const FooterWrapper = styled.footer`
-  background: #000000;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.95) 0%, rgba(15, 15, 15, 0.98) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   color: #ffffff;
-  padding: 60px 0 30px;
-  margin-top: 80px;
+  padding: 80px 0 40px;
+  margin-top: 100px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
   z-index: 10;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(6, 148, 251, 0.5), transparent);
+  }
 `;
 
 const MainFooterSection = styled.div`
@@ -19,10 +31,20 @@ const MainFooterSection = styled.div`
   padding: 0 20px;
   display: grid;
   grid-template-columns: 2fr 1fr 1fr 1fr 1.5fr;
-  gap: 40px;
-  margin-bottom: 40px;
+  gap: 50px;
+  margin-bottom: 50px;
+
+  @media (max-width: 1024px) {
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 40px;
+  }
 
   @media (max-width: 768px) {
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+  }
+
+  @media (max-width: 480px) {
     grid-template-columns: 1fr;
     gap: 30px;
     text-align: center;
@@ -33,7 +55,7 @@ const LogoSection = styled.div`
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 20px;
+  gap: 25px;
 
   @media (max-width: 768px) {
     align-items: center;
@@ -41,50 +63,97 @@ const LogoSection = styled.div`
 `;
 
 const FooterLogo = styled.img`
-  height: 40px;
+  height: 50px;
   width: auto;
+  filter: brightness(1.1);
+  transition: all 0.3s ease;
+
+  &:hover {
+    filter: brightness(1.3);
+    transform: scale(1.05);
+  }
 `;
 
 const QRCodeImage = styled.img`
-  width: 80px;
-  height: 80px;
-  border-radius: 8px;
-  background: #000000;
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  width: 90px;
+  height: 90px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  padding: 8px;
+  transition: all 0.3s ease;
+
+  &:hover {
+    border-color: rgba(6, 148, 251, 0.3);
+    transform: scale(1.05);
+    box-shadow: 0 8px 25px rgba(6, 148, 251, 0.2);
+  }
 `;
 
 const FooterColumn = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 18px;
 `;
 
 const FooterTitle = styled.h3`
-  color: #cccccc;
-  font-size: 16px;
-  font-weight: 500;
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 600;
   margin: 0;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 0;
+    width: 30px;
+    height: 2px;
+    background: linear-gradient(90deg, #0694fb, #0094ff);
+    border-radius: 1px;
+  }
 `;
 
 const FooterLink = styled(Link)`
-  color: #ffffff;
+  color: rgba(255, 255, 255, 0.8);
   text-decoration: none;
-  font-size: 14px;
-  transition: color 0.3s ease;
+  font-size: 15px;
+  font-weight: 400;
+  transition: all 0.3s ease;
   line-height: 1.6;
+  padding: 4px 0;
+  position: relative;
 
   &:hover {
     color: #0694fb;
+    transform: translateX(5px);
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: -15px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 1px;
+    background: #0694fb;
+    transition: width 0.3s ease;
+  }
+
+  &:hover::before {
+    width: 10px;
   }
 `;
 
 const SubscribeForm = styled.form`
   display: flex;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 12px;
+  margin-top: 15px;
 
   @media (max-width: 768px) {
     flex-direction: column;
@@ -93,46 +162,49 @@ const SubscribeForm = styled.form`
 `;
 
 const EmailInput = styled.input`
-  padding: 12px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  background: #333333;
+  padding: 14px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 25px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
   color: #ffffff;
-  font-size: 14px;
+  font-size: 15px;
   outline: none;
   transition: all 0.3s ease;
-  min-width: 200px;
+  min-width: 220px;
 
   &::placeholder {
-    color: #ffffff;
+    color: rgba(255, 255, 255, 0.6);
   }
 
   &:focus {
     border-color: #0694fb;
-    background: #444444;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 3px rgba(6, 148, 251, 0.1);
   }
 
   @media (max-width: 768px) {
-    min-width: 250px;
+    min-width: 280px;
   }
 `;
 
 const SendButton = styled.button`
-  padding: 12px 24px;
-  background: #0694fb;
+  padding: 14px 28px;
+  background: linear-gradient(135deg, #0694fb, #0094ff);
   border: none;
-  border-radius: 8px;
+  border-radius: 25px;
   color: #ffffff;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
   white-space: nowrap;
+  box-shadow: 0 4px 15px rgba(6, 148, 251, 0.3);
 
   &:hover {
-    background: #0094ff;
+    background: linear-gradient(135deg, #0580d6, #0078e6);
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(6, 148, 251, 0.3);
+    box-shadow: 0 8px 25px rgba(6, 148, 251, 0.4);
   }
 
   &:active {
@@ -142,12 +214,12 @@ const SendButton = styled.button`
 
 const FooterBottom = styled.div`
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-top: 20px;
+  padding-top: 30px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 20px;
+  gap: 25px;
   max-width: 1200px;
   margin: 0 auto;
   padding-left: 20px;
@@ -156,54 +228,31 @@ const FooterBottom = styled.div`
   @media (max-width: 768px) {
     flex-direction: column;
     text-align: center;
+    gap: 20px;
   }
 `;
 
 const CopyrightText = styled.p`
-  color: #999999;
-  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 15px;
   margin: 0;
+  font-weight: 400;
 `;
 
 const LegalLinks = styled.div`
   display: flex;
-  gap: 20px;
+  gap: 25px;
 
   @media (max-width: 480px) {
     flex-direction: column;
-    gap: 10px;
-  }
-
-  /* Mobile devices (320px - 480px) */
-  @media (min-width: 320px) and (max-width: 480px) {
-    flex-direction: row;
-    gap: 10px;
-  }
-
-  /* iPads, Tablets (481px - 768px) */
-  @media (min-width: 481px) and (max-width: 768px) {
-    gap: 10px;
-    margin-top: 2px;
-  }
-
-  /* Small screens, laptops (769px - 1024px) */
-  @media (min-width: 769px) and (max-width: 1024px) {
-  }
-
-  /* Desktops, large screens (1025px - 1200px) */
-  @media (min-width: 1025px) and (max-width: 1200px) {
-    font-size: 100px;
-  }
-
-  /* Extra large screens, TV (1201px and more) */
-  @media (min-width: 1201px) {
+    gap: 15px;
   }
 `;
 
 const ContactSection = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
   text-align: right;
 
   @media (max-width: 768px) {
@@ -212,24 +261,45 @@ const ContactSection = styled.div`
 `;
 
 const ContactText = styled.p`
-  color: #999999;
-  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
   margin: 0;
+  font-weight: 400;
 `;
 
 const ContactEmail = styled.span`
   color: #0694fb;
-  font-weight: 500;
+  font-weight: 600;
+  transition: all 0.3s ease;
+
+  &:hover {
+    color: #0094ff;
+    text-shadow: 0 0 8px rgba(6, 148, 251, 0.5);
+  }
 `;
 
 const CareersDot = styled.span`
   display: inline-block;
-  width: 6px;
-  height: 6px;
-  background: #ffffff;
+  width: 8px;
+  height: 8px;
+  background: linear-gradient(135deg, #0694fb, #0094ff);
   border-radius: 50%;
-  margin-left: 8px;
+  margin-left: 10px;
   vertical-align: middle;
+  box-shadow: 0 0 10px rgba(6, 148, 251, 0.5);
+  animation: pulse 2s infinite;
+
+  @keyframes pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(6, 148, 251, 0.7);
+    }
+    70% {
+      box-shadow: 0 0 0 10px rgba(6, 148, 251, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(6, 148, 251, 0);
+    }
+  }
 `;
 
 const Footer = () => {

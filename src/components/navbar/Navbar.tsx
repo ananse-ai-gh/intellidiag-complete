@@ -32,10 +32,40 @@ const Navbar = () => {
   const { user, isAuthenticated, logout } = useAuth();
   const { openModal } = useModal();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [logoSize, setLogoSize] = useState<{ width: number; height: number }>({ width: 160, height: 40 });
 
   // Close mobile menu when route changes
   useEffect(() => {
     setIsMobileMenuOpen(false);
+  }, [pathname]);
+
+  // Handle scroll effect
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.scrollY;
+      setIsScrolled(scrollTop > 50);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Set dashboard logo width to 80% of sidebar width (sidebar: 280px @ >=769px, 321px @ >=1024px)
+  useEffect(() => {
+    const computeLogoSize = () => {
+      const isDashboard = pathname.startsWith('/dashboard');
+      if (!isDashboard) {
+        setLogoSize({ width: 160, height: 40 });
+        return;
+      }
+      // Use fixed 240px width for dashboard as requested
+      setLogoSize({ width: 240, height: 16 });
+    };
+
+    computeLogoSize();
+    window.addEventListener('resize', computeLogoSize);
+    return () => window.removeEventListener('resize', computeLogoSize);
   }, [pathname]);
 
   // Prevent body scroll when mobile menu is open
@@ -77,31 +107,94 @@ const Navbar = () => {
     setIsMobileMenuOpen(false);
   };
 
+  // Smooth scroll function for homepage sections
+  const scrollToSection = (sectionId: string) => {
+    if (pathname === '/') {
+      const element = document.getElementById(sectionId);
+      if (element) {
+        element.scrollIntoView({ 
+          behavior: 'smooth',
+          block: 'start'
+        });
+      }
+    } else {
+      // If not on homepage, navigate to homepage first then scroll
+      window.location.href = `/#${sectionId}`;
+    }
+    closeMobileMenu();
+  };
+
+  const isDashboard = pathname.startsWith('/dashboard');
+
   return (
     <>
       <NavbarContainer>
-        <Nav>
+        <Nav isScrolled={isScrolled}>
           <LogoContainer>
             <Link href='/'>
-              <h1>
-                <Image src='/intellidiag.png' alt='IntelliDiag Logo' width={120} height={30} />
-              </h1>
+              <Image 
+                src='/intellidiag.png' 
+                alt='IntelliDiag Logo' 
+                width={isDashboard ? logoSize.width : 160} 
+                height={isDashboard ? logoSize.height : 40}
+                style={{
+                  objectFit: 'contain',
+                  height: 'auto',
+                  width: isDashboard ? `${logoSize.width}px` : 'auto'
+                }}
+              />
             </Link>
           </LogoContainer>
 
           <NavMenu isOpen={isMobileMenuOpen}>
-            <NavLink href='/' className={pathname === '/' ? 'active' : ''}>
-              Home
-            </NavLink>
-            <NavLink href='/about' className={pathname === '/about' ? 'active' : ''}>
+            <button 
+              onClick={() => scrollToSection('about')} 
+              className={pathname === '/' ? 'active' : ''}
+              style={{ 
+                cursor: 'pointer',
+                background: 'none',
+                border: 'none',
+                color: 'inherit',
+                font: 'inherit',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                transition: 'all 0.3s ease'
+              }}
+            >
               About
-            </NavLink>
-            <NavLink href='/features' className={pathname === '/features' ? 'active' : ''}>
+            </button>
+            <button 
+              onClick={() => scrollToSection('features')} 
+              className={pathname === '/' ? 'active' : ''}
+              style={{ 
+                cursor: 'pointer',
+                background: 'none',
+                border: 'none',
+                color: 'inherit',
+                font: 'inherit',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                transition: 'all 0.3s ease'
+              }}
+            >
               Features
-            </NavLink>
-            <NavLink href='/contact' className={pathname === '/contact' ? 'active' : ''}>
+            </button>
+            <button 
+              onClick={() => scrollToSection('contact')}
+              className={pathname === '/' ? 'active' : ''}
+              style={{ 
+                cursor: 'pointer',
+                background: 'none',
+                border: 'none',
+                color: 'inherit',
+                font: 'inherit',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                transition: 'all 0.3s ease'
+              }}
+            >
               Contact
-            </NavLink>
+            </button>
             {isAuthenticated && (
               <NavLink href='/dashboard' className={pathname.startsWith('/dashboard') ? 'active' : ''}>
                 Dashboard
@@ -150,18 +243,60 @@ const Navbar = () => {
           </svg>
         </CloseButton>
 
-        <NavLink href='/' className={pathname === '/' ? 'active' : ''} onClick={closeMobileMenu}>
-          Home
-        </NavLink>
-        <NavLink href='/about' className={pathname === '/about' ? 'active' : ''} onClick={closeMobileMenu}>
+        <button 
+          onClick={() => scrollToSection('about')}
+          className={pathname === '/' ? 'active' : ''}
+          style={{ 
+            cursor: 'pointer',
+            background: 'none',
+            border: 'none',
+            color: 'inherit',
+            font: 'inherit',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            transition: 'all 0.3s ease',
+            width: '100%',
+            textAlign: 'left'
+          }}
+        >
           About
-        </NavLink>
-        <NavLink href='/features' className={pathname === '/features' ? 'active' : ''} onClick={closeMobileMenu}>
+        </button>
+        <button 
+          onClick={() => scrollToSection('features')}
+          className={pathname === '/' ? 'active' : ''}
+          style={{ 
+            cursor: 'pointer',
+            background: 'none',
+            border: 'none',
+            color: 'inherit',
+            font: 'inherit',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            transition: 'all 0.3s ease',
+            width: '100%',
+            textAlign: 'left'
+          }}
+        >
           Features
-        </NavLink>
-        <NavLink href='/contact' className={pathname === '/contact' ? 'active' : ''} onClick={closeMobileMenu}>
+        </button>
+        <button 
+          onClick={() => scrollToSection('contact')}
+          className={pathname === '/' ? 'active' : ''}
+          style={{ 
+            cursor: 'pointer',
+            background: 'none',
+            border: 'none',
+            color: 'inherit',
+            font: 'inherit',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            transition: 'all 0.3s ease',
+            width: '100%',
+            textAlign: 'left'
+          }}
+        >
           Contact
-        </NavLink>
+        </button>
         {isAuthenticated && (
           <NavLink href='/dashboard' className={pathname.startsWith('/dashboard') ? 'active' : ''} onClick={closeMobileMenu}>
             Dashboard

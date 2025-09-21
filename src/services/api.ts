@@ -1,4 +1,5 @@
 import axios from "axios";
+import { supabase } from "@/lib/supabase";
 
 // Use relative URLs for Next.js API routes
 const api = axios.create({
@@ -10,13 +11,19 @@ const api = axios.create({
 
 // Request interceptor to add auth token
 api.interceptors.request.use(
-  (config) => {
-    let token = localStorage.getItem("token");
-    if (!token) {
-      token = sessionStorage.getItem("token");
-    }
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+  async (config) => {
+    // Only run on client side
+    if (typeof window !== 'undefined') {
+      try {
+        // Get current session from Supabase
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session?.access_token) {
+          config.headers.Authorization = `Bearer ${session.access_token}`;
+        }
+      } catch (error) {
+        console.error('Error getting session:', error);
+      }
     }
     return config;
   },
@@ -28,10 +35,12 @@ api.interceptors.request.use(
 // Response interceptor to handle auth errors
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem("token");
-      sessionStorage.removeItem("token");
+      // Sign out from Supabase on 401 error
+      if (typeof window !== 'undefined') {
+        await supabase.auth.signOut();
+      }
     }
     return Promise.reject(error);
   }

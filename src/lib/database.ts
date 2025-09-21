@@ -1,104 +1,91 @@
-// Use hybrid database service (SQLite for dev, Supabase for production)
+// Use Supabase profiles database service
 export {
-    hybridDb as db,
+    db,
     getRow,
     getAll,
     runQuery,
     initDatabase
-} from './hybridDatabase'
+} from './supabaseProfilesDatabase'
 
-// Legacy compatibility - redirect to hybrid database
-import { hybridDb } from './hybridDatabase'
+// Legacy compatibility functions
+import { db } from './supabaseProfilesDatabase'
 
-// For backward compatibility with existing code
-export const createUser = async (userData: any) => {
-    return await hybridDb.createUser(userData)
+export const getProfileById = async (id: string) => {
+    return await db.getProfileById(id)
 }
 
-export const getUserById = async (id: string) => {
-    return await hybridDb.getUserById(id)
+export const createProfile = async (profileData: any) => {
+    return await db.createProfile(profileData)
 }
 
-export const getUserByEmail = async (email: string) => {
-    return await hybridDb.getUserByEmail(email)
+export const updateProfile = async (id: string, updates: any) => {
+    return await db.updateProfile(id, updates)
 }
 
-export const updateUser = async (id: string, updates: any) => {
-    return await hybridDb.updateUser(id, updates)
-}
-
-export const getAllUsers = async () => {
-    return await hybridDb.getAllUsers()
-}
-
-export const createPatient = async (patientData: any) => {
-    return await hybridDb.createPatient(patientData)
+export const getAllProfiles = async () => {
+    return await db.getAllProfiles()
 }
 
 export const getPatientById = async (id: string) => {
-    return await hybridDb.getPatientById(id)
+    return await db.getPatientById(id)
+}
+
+export const createPatient = async (patientData: any) => {
+    return await db.createPatient(patientData)
 }
 
 export const updatePatient = async (id: string, updates: any) => {
-    return await hybridDb.updatePatient(id, updates)
+    return await db.updatePatient(id, updates)
 }
 
 export const getAllPatients = async () => {
-    return await hybridDb.getAllPatients()
-}
-
-export const deletePatient = async (id: string) => {
-    return await hybridDb.deletePatient(id)
-}
-
-export const createScan = async (scanData: any) => {
-    return await hybridDb.createScan(scanData)
+    return await db.getAllPatients()
 }
 
 export const getScanById = async (id: string) => {
-    return await hybridDb.getScanById(id)
+    return await db.getScanById(id)
+}
+
+export const createScan = async (scanData: any) => {
+    return await db.createScan(scanData)
 }
 
 export const updateScan = async (id: string, updates: any) => {
-    return await hybridDb.updateScan(id, updates)
+    return await db.updateScan(id, updates)
 }
 
 export const getAllScans = async () => {
-    return await hybridDb.getAllScans()
+    return await db.getAllScans()
 }
 
 export const getScansByPatientId = async (patientId: string) => {
-    return await hybridDb.getScansByPatientId(patientId)
-}
-
-export const deleteScan = async (id: string) => {
-    return await hybridDb.deleteScan(id)
-}
-
-export const createAnalysis = async (analysisData: any) => {
-    return await hybridDb.createAnalysis(analysisData)
+    return await db.getScansByPatientId(patientId)
 }
 
 export const getAnalysisById = async (id: string) => {
-    return await hybridDb.getAnalysisById(id)
+    return await db.getAnalysisById(id)
+}
+
+export const createAnalysis = async (analysisData: any) => {
+    return await db.createAnalysis(analysisData)
 }
 
 export const updateAnalysis = async (id: string, updates: any) => {
-    return await hybridDb.updateAnalysis(id, updates)
+    return await db.updateAnalysis(id, updates)
 }
 
 export const getAllAnalyses = async () => {
-    return await hybridDb.getAllAnalyses()
+    return await db.getAllAnalyses()
 }
 
 export const getAnalysesByScanId = async (scanId: string) => {
-    return await hybridDb.getAnalysesByScanId(scanId)
+    return await db.getAnalysesByScanId(scanId)
 }
 
 export const getDashboardStats = async () => {
-    return await hybridDb.getDashboardStats()
+    return await db.getDashboardStats()
 }
 
 export const healthCheck = async () => {
-    return await hybridDb.healthCheck()
+    return await db.healthCheck()
 }

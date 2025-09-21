@@ -1,22 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hybridDb } from '@/lib/hybridDatabase';
-import jwt from 'jsonwebtoken';
+import { db } from '@/lib/database';
+import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-
-// Helper function to verify JWT token
-const verifyToken = (request: NextRequest) => {
+// Helper function to verify Supabase session
+const verifyToken = async (request: NextRequest) => {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return null;
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: string };
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (error || !user) return null;
+        return user;
     } catch (error) {
         return null;
     }
@@ -25,7 +25,7 @@ const verifyToken = (request: NextRequest) => {
 // GET /api/patients
 export async function GET(request: NextRequest) {
     try {
-        const user = verifyToken(request);
+        const user = await verifyToken(request);
         if (!user) {
             return NextResponse.json(
                 { status: 'error', message: 'Unauthorized' },
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         const search = searchParams.get('search') || '';
 
         // Get all patients
-        const allPatients = await hybridDb.getAllPatients();
+        const allPatients = await db.getAllPatients();
 
         // Apply search filter
         let filteredPatients = allPatients;
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
 // POST /api/patients
 export async function POST(request: NextRequest) {
     try {
-        const user = verifyToken(request);
+        const user = await verifyToken(request);
         if (!user) {
             return NextResponse.json(
                 { status: 'error', message: 'Unauthorized' },
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Create new patient
-        const patient = await hybridDb.createPatient({
+        const patient = await db.createPatient({
             first_name: firstName,
             last_name: lastName,
             date_of_birth: dateOfBirth,

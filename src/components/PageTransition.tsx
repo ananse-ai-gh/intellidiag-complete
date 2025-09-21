@@ -56,19 +56,8 @@ export default function PageTransition({ children }: PageTransitionProps) {
   const [transitionText, setTransitionText] = useState('');
 
   useEffect(() => {
-    // Only show transition for homepage, not for dashboard routes
-    if (pathname === '/') {
-      setTransitionText('Welcome back');
-      setIsTransitioning(true);
-      
-      // Hide transition after animation completes
-      setTimeout(() => {
-        setIsTransitioning(false);
-      }, 1200);
-    } else {
-      // For all other routes (including dashboard), show no transition
-      setIsTransitioning(false);
-    }
+    // Disable transitions for now to fix homepage reloading issue
+    setIsTransitioning(false);
   }, [pathname]);
 
   return (

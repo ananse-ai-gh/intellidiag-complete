@@ -45,8 +45,8 @@ const PartnersContainer = styled.div`
 
 const PartnersHeading = styled.h1`
   width: 90%;
-  max-width: 636px;
-  font-size: 32px;
+  max-width: 700px;
+  font-size: 24px;
   font-weight: 500;
   text-align: center;
   line-height: 1.2;
@@ -54,34 +54,34 @@ const PartnersHeading = styled.h1`
 
   /* Mobile devices (320px - 480px) */
   @media (min-width: 320px) and (max-width: 480px) {
-    font-size: 28px;
+    font-size: 20px;
     width: 260px;
     // margin-bottom: 35px;
   }
 
   /* iPads, Tablets (481px - 768px) */
   @media (min-width: 481px) and (max-width: 768px) {
-    font-size: 42px;
+    font-size: 28px;
     max-width: 70%;
     margin-bottom: 0px;
   }
 
   /* Small screens, laptops (769px - 1024px) */
   @media (min-width: 769px) and (max-width: 1024px) {
-    font-size: 52px;
+    font-size: 32px;
     width: 70%;
     margin-bottom: 20px;
   }
 
   /* Desktops, large screens (1025px - 1200px) */
   @media (min-width: 1025px) and (max-width: 1200px) {
-    font-size: 50px;
+    font-size: 36px;
     margin-bottom: 35px;
   }
 
   /* Extra large screens, TV (1201px and more) */
   @media (min-width: 1201px) {
-    font-size: 60px;
+    font-size: 40px;
     margin-bottom: 40px;
   }
 `;
@@ -132,44 +132,49 @@ const PartnersGrid = styled(motion.div)`
 const PartnerCard = styled(motion.div)`
   overflow: hidden;
   height: 200px;
-  // width: 4vw;
-
-  border-radius: 15px;
-  background-color: rgb(28, 28, 28);
+  width: 200px;
+  border-radius: 50%;
+  background-color: #ffffff;
   position: relative;
-  // flex: 1 1 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 
   /* Mobile devices (320px - 480px) */
   @media (min-width: 320px) and (max-width: 480px) {
-    height: 190px;
-    width: 60%;
-    min-width: 50%;
+    height: 150px;
+    width: 150px;
+    padding: 15px;
   }
 
   /* iPads, Tablets (481px - 768px) */
   @media (min-width: 481px) and (max-width: 768px) {
-    height: 250px;
-    width: 270px;
+    height: 180px;
+    width: 180px;
+    padding: 18px;
   }
 
   /* Small screens, laptops (769px - 1024px) */
   @media (min-width: 769px) and (max-width: 1024px) {
-    height: 260px;
-    width: 270px;
+    height: 200px;
+    width: 200px;
+    padding: 20px;
   }
 
   /* Desktops, large screens (1025px - 1200px) */
   @media (min-width: 1025px) and (max-width: 1200px) {
-    height: 280px;
-    width: calc(33.333% - 20px);
-    min-width: calc(33.333% - 20px);
+    height: 220px;
+    width: 220px;
+    padding: 22px;
   }
 
   /* Extra large screens, TV (1201px and more) */
   @media (min-width: 1201px) {
-    height: 297px;
-    width: 20rem;
-    min-width: 20rem;
+    height: 240px;
+    width: 240px;
+    padding: 24px;
   }
 `;
 
@@ -179,6 +184,7 @@ const Subheading = styled.h2`
   color: #9c9c9c;
   text-align: center;
   margin: 0px;
+  width: 60%;
 
   @media (min-width: 320px) and (max-width: 480px) {
     font-size: 16px;
@@ -212,7 +218,7 @@ const Subheading = styled.h2`
 const PartnerLogo = styled.img`
   height: 100%;
   width: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
 `;
 
@@ -244,9 +250,7 @@ function Partners2() {
         Strategic and support partners for <Highlight>intelliDiag</Highlight>
       </PartnersHeading>
       <Subheading>
-        We are proud to collaborate with organizations that share our vision of
-        transforming diagnostics through innovation, accessibility, and
-        technology
+        We are proud to collaborate with organizations that share our vision of transforming diagnostics through innovation, accessibility, and technology.
       </Subheading>
 
       {/* Partners Grid */}

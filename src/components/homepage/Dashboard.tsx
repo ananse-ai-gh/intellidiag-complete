@@ -41,7 +41,7 @@ function Dashboard() {
           padding: 0,
           height: "100vh",
           backgroundColor: "black",
-          width: "100vw",
+          width: "100%",
           fontFamily: "var(--font-primary)",
           display: "flex",
           alignItems: "center",
@@ -73,7 +73,7 @@ function Dashboard() {
           padding: 0,
           height: "100vh",
           backgroundColor: "black",
-          width: "100vw",
+          width: "100%",
           fontFamily: "var(--font-primary)",
           display: "flex",
           alignItems: "center",
@@ -106,10 +106,11 @@ function Dashboard() {
       style={{
         margin: 0,
         padding: 0,
-        height: "100vh",
+        minHeight: "100vh",
         backgroundColor: "black",
-        width: "100vw",
+        width: "100%",
         fontFamily: "var(--font-primary)",
+        overflow: "hidden"
       }}
     >
       <CustomCursor />
@@ -117,11 +118,11 @@ function Dashboard() {
         style={{
           display: "flex",
           flexDirection: "column",
-          padding: "28px 33px",
+          padding: "24px",
           width: "100%",
-          height: "100vh",
           boxSizing: "border-box",
-          overflowY: "auto",
+          height: "100%",
+          overflow: "hidden"
         }}
       >
         <Appbar />

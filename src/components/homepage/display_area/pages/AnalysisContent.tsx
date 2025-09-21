@@ -814,27 +814,6 @@ const AnalysisContent = () => {
     setTimeout(() => setNotification(null), 5000);
   }, []);
 
-  const loadStats = useCallback((analysesData: Analysis[] = analyses) => {
-    try {
-      // Calculate stats from provided analyses data using aiStatus
-      const completedAnalyses = analysesData.filter(a => a.aiStatus === 'completed');
-      const avgConfidence = completedAnalyses.length > 0 
-        ? completedAnalyses.reduce((sum, a) => sum + (a.confidence || 0), 0) / completedAnalyses.length
-        : 0;
-
-      setStats({
-        total: analysesData.length,
-        pending: analysesData.filter(a => a.aiStatus === 'pending').length,
-        processing: analysesData.filter(a => a.aiStatus === 'processing').length,
-        completed: completedAnalyses.length,
-        failed: analysesData.filter(a => a.aiStatus === 'failed').length,
-        avgConfidence: Math.round(avgConfidence)
-      });
-    } catch (error) {
-      console.error('Error calculating stats:', error);
-    }
-  }, [analyses]);
-
   const loadAnalyses = useCallback(async () => {
     try {
       setLoading(true);
@@ -849,8 +828,21 @@ const AnalysisContent = () => {
       ) : [];
       
       setAnalyses(analysesWithAI);
+      
       // Calculate stats from the loaded analyses
-      loadStats(analysesWithAI);
+      const completedAnalyses = analysesWithAI.filter((a: Analysis) => a.aiStatus === 'completed');
+      const avgConfidence = completedAnalyses.length > 0 
+        ? completedAnalyses.reduce((sum: number, a: Analysis) => sum + (a.confidence || 0), 0) / completedAnalyses.length
+        : 0;
+
+      setStats({
+        total: analysesWithAI.length,
+        pending: analysesWithAI.filter((a: Analysis) => a.aiStatus === 'pending').length,
+        processing: analysesWithAI.filter((a: Analysis) => a.aiStatus === 'processing').length,
+        completed: completedAnalyses.length,
+        failed: analysesWithAI.filter((a: Analysis) => a.aiStatus === 'failed').length,
+        avgConfidence: Math.round(avgConfidence)
+      });
     } catch (error) {
       console.error('Error loading analyses:', error);
       setAnalyses([]);
@@ -858,7 +850,7 @@ const AnalysisContent = () => {
     } finally {
       setLoading(false);
     }
-  }, [loadStats, showNotification]);
+  }, [showNotification]);
 
   useEffect(() => {
     loadAnalyses();

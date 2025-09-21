@@ -309,7 +309,7 @@ function Appbar() {
     >
       <div
         style={{
-          height: "42px",
+          height: "24px",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -319,11 +319,14 @@ function Appbar() {
           <Image
             style={{
               cursor: "pointer",
+              objectFit: "contain",
+              height: "auto",
+              width: "auto"
             }}
             src="/intellidiag.png"
             alt="IntelliDiag Logo"
-            width={22}
-            height={22}
+            width={16}
+            height={16}
           />
         </Link>
       </div>

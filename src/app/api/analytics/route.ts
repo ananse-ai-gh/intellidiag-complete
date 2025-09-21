@@ -1,22 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseDb } from '@/lib/supabaseDatabase';
-import jwt from 'jsonwebtoken';
+import { db } from '@/lib/database';
+import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-
-// Helper function to verify JWT token
-const verifyToken = (request: NextRequest) => {
+// Helper function to verify Supabase session
+const verifyToken = async (request: NextRequest) => {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return null;
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: string };
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (error || !user) return null;
+        return user;
     } catch (error) {
         return null;
     }
@@ -25,7 +25,7 @@ const verifyToken = (request: NextRequest) => {
 // GET /api/analytics
 export async function GET(request: NextRequest) {
     try {
-        const user = verifyToken(request);
+        const user = await verifyToken(request);
         if (!user) {
             return NextResponse.json(
                 { status: 'error', message: 'Unauthorized' },
@@ -34,10 +34,10 @@ export async function GET(request: NextRequest) {
         }
 
         // Get dashboard stats using Supabase
-        const stats = await supabaseDb.getDashboardStats();
+        const stats = await db.getDashboardStats();
 
         // Get scans by type
-        const { data: scansByType } = await supabaseDb.client
+        const { data: scansByType } = await supabase
             .from('scans')
             .select('scan_type')
             .not('status', 'eq', 'archived');
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
         }, {}) || {};
 
         // Get scans by status
-        const { data: scansByStatus } = await supabaseDb.client
+        const { data: scansByStatus } = await supabase
             .from('scans')
             .select('status')
             .not('status', 'eq', 'archived');
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-        const { data: recentScans } = await supabaseDb.client
+        const { data: recentScans } = await supabase
             .from('scans')
             .select(`
                 *,
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
         const sixMonthsAgo = new Date();
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-        const { data: scansByMonth } = await supabaseDb.client
+        const { data: scansByMonth } = await supabase
             .from('scans')
             .select('created_at')
             .gte('created_at', sixMonthsAgo.toISOString());

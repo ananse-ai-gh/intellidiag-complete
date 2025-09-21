@@ -1,22 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hybridDb } from '@/lib/hybridDatabase';
-import jwt from 'jsonwebtoken';
+import { db } from '@/lib/supabaseProfilesDatabase';
+import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-
-// Helper function to verify JWT token
-const verifyToken = (request: NextRequest) => {
+// Helper function to verify Supabase session
+const verifySupabaseSession = async (request: NextRequest) => {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return null;
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: string };
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (error || !user) return null;
+
+        // Get user profile to check role and active status
+        const profile = await db.getProfileById(user.id);
+        if (!profile || !profile.isactive) return null;
+
+        return { user, profile };
     } catch (error) {
         return null;
     }
@@ -29,8 +34,8 @@ export async function GET(
 ) {
     try {
         // Verify authentication
-        const user = verifyToken(request);
-        if (!user) {
+        const authResult = await verifySupabaseSession(request);
+        if (!authResult) {
             return NextResponse.json(
                 { status: 'error', message: 'Authentication required' },
                 { status: 401 }
@@ -40,7 +45,7 @@ export async function GET(
         const scanId = params.id;
 
         // Get scan with patient and AI analysis details
-        const scan = await hybridDb.getScanById(scanId);
+        const scan = await db.getScanById(scanId);
 
         if (!scan) {
             return NextResponse.json(
@@ -50,10 +55,10 @@ export async function GET(
         }
 
         // Get patient details
-        const patient = await hybridDb.getPatientById(scan.patient_id);
+        const patient = await db.getPatientById(scan.patient_id);
 
         // Get AI analysis details
-        const analyses = await hybridDb.getAnalysesByScanId(scanId);
+        const analyses = await db.getAnalysesByScanId(scanId);
         const analysis = analyses[0];
 
         // Transform to expected format
@@ -104,8 +109,8 @@ export async function PUT(
 ) {
     try {
         // Verify authentication
-        const user = verifyToken(request);
-        if (!user) {
+        const authResult = await verifySupabaseSession(request);
+        if (!authResult) {
             return NextResponse.json(
                 { status: 'error', message: 'Authentication required' },
                 { status: 401 }
@@ -125,17 +130,17 @@ export async function PUT(
         }
 
         // Update scan in database
-        const updatedScan = await hybridDb.updateScan(scanId, {
+        const updatedScan = await db.updateScan(scanId, {
             scan_type: scanType,
             body_part: bodyPart,
             priority: priority as 'low' | 'medium' | 'high' | 'urgent' || 'medium'
         });
 
         // Get patient details
-        const patient = await hybridDb.getPatientById(updatedScan.patient_id);
+        const patient = await db.getPatientById(updatedScan.patient_id);
 
         // Get AI analysis details
-        const analyses = await hybridDb.getAnalysesByScanId(scanId);
+        const analyses = await db.getAnalysesByScanId(scanId);
         const analysis = analyses[0];
 
         // Transform to expected format
@@ -187,8 +192,8 @@ export async function DELETE(
 ) {
     try {
         // Verify authentication
-        const user = verifyToken(request);
-        if (!user) {
+        const authResult = await verifySupabaseSession(request);
+        if (!authResult) {
             return NextResponse.json(
                 { status: 'error', message: 'Authentication required' },
                 { status: 401 }
@@ -198,7 +203,7 @@ export async function DELETE(
         const scanId = params.id;
 
         // Check if scan exists
-        const scan = await hybridDb.getScanById(scanId);
+        const scan = await db.getScanById(scanId);
         if (!scan) {
             return NextResponse.json(
                 { status: 'error', message: 'Scan not found' },
@@ -207,14 +212,14 @@ export async function DELETE(
         }
 
         // Delete AI analysis first (foreign key constraint)
-        const analyses = await hybridDb.getAnalysesByScanId(scanId);
+        const analyses = await db.getAnalysesByScanId(scanId);
         for (const analysis of analyses) {
-            // Note: We don't have a deleteAnalysis method in hybridDb yet
+            // Note: We don't have a deleteAnalysis method in db yet
             // This would need to be implemented if needed
         }
 
         // Delete the scan
-        await hybridDb.deleteScan(scanId);
+        await db.updateScan(scanId, { status: 'deleted' });
 
         return NextResponse.json({
             status: 'success',

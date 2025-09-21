@@ -1,23 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { hybridDb } from '@/lib/hybridDatabase';
-import jwt from 'jsonwebtoken';
+import { db } from '@/lib/database';
+import { supabase } from '@/lib/supabase';
 import bcrypt from 'bcryptjs';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-
-// Helper function to verify JWT token
-const verifyToken = (request: NextRequest) => {
+// Helper function to verify Supabase session
+const verifyToken = async (request: NextRequest) => {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return null;
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: string };
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (error || !user) return null;
+        return user;
     } catch (error) {
         return null;
     }
@@ -26,7 +26,7 @@ const verifyToken = (request: NextRequest) => {
 // GET /api/users
 export async function GET(request: NextRequest) {
     try {
-        const user = verifyToken(request);
+        const user = await verifyToken(request);
         if (!user) {
             return NextResponse.json(
                 { status: 'error', message: 'Unauthorized' },
@@ -40,8 +40,8 @@ export async function GET(request: NextRequest) {
         const search = searchParams.get('search') || '';
         const role = searchParams.get('role') || '';
 
-        // Get all users
-        let allUsers = await hybridDb.getAllUsers();
+        // Get all users (profiles)
+        let allUsers = await db.getAllProfiles();
 
         // Apply filters
         if (search) {
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
 // POST /api/users
 export async function POST(request: NextRequest) {
     try {
-        const user = verifyToken(request);
+        const user = await verifyToken(request);
         if (!user) {
             return NextResponse.json(
                 { status: 'error', message: 'Unauthorized' },
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if user already exists
-        const existingUser = await hybridDb.getUserByEmail(email);
+        const existingUser = await db.getProfileByEmail(email);
         if (existingUser) {
             return NextResponse.json(
                 { status: 'error', message: 'User with this email already exists' },
@@ -132,8 +132,8 @@ export async function POST(request: NextRequest) {
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 12);
 
-        // Create new user
-        const newUser = await hybridDb.createUser({
+        // Create new user profile
+        const newUser = await db.createProfile({
             email,
             first_name: firstName,
             last_name: lastName,

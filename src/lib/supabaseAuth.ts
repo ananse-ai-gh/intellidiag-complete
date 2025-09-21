@@ -2,15 +2,11 @@ import { supabase, createServerSupabaseClient } from './supabase'
 
 export interface SupabaseUser {
     id: string
-    email: string
-    first_name: string
-    last_name: string
     role: 'admin' | 'doctor' | 'radiologist' | 'patient'
     specialization?: string
-    licenseNumber?: string
-    profileImage?: string
-    isActive: boolean
-    lastLogin?: string
+    licensenumber?: string
+    isactive: boolean
+    lastlogin?: string
     created_at: string
     updated_at: string
 }
@@ -34,47 +30,48 @@ class SupabaseAuthService {
     // Client-side auth operations
     async signUp(data: SignUpData) {
         try {
+            // Use server-side Supabase client for API operations
+            const supabaseAdmin = createServerSupabaseClient();
+
             // Sign up with Supabase Auth
-            const { data: authData, error: authError } = await supabase.auth.signUp({
+            const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
                 email: data.email,
                 password: data.password,
-                options: {
-                    data: {
-                        first_name: data.firstName,
-                        last_name: data.lastName,
-                        role: data.role || 'patient',
-                        specialization: data.specialization,
-                        licenseNumber: data.licenseNumber
-                    }
-                }
-            })
+                user_metadata: {
+                    first_name: data.firstName,
+                    last_name: data.lastName,
+                    role: data.role || 'patient',
+                    specialization: data.specialization,
+                    licenseNumber: data.licenseNumber
+                },
+                email_confirm: true // Auto-confirm email for development
+            });
 
-            if (authError) throw authError
+            if (authError) throw authError;
 
-            // If user was created successfully, create user profile
-            if (authData.user) {
-                const { error: profileError } = await supabase
-                    .from('users')
-                    .insert({
-                        id: authData.user.id,
-                        email: data.email,
-                        first_name: data.firstName,
-                        last_name: data.lastName,
-                        role: data.role || 'patient',
-                        specialization: data.specialization,
-                        licenseNumber: data.licenseNumber,
-                        isActive: true
-                    })
+            // Manually create profile in profiles table
+            const { data: profileData, error: profileError } = await supabaseAdmin
+                .from('profiles')
+                .insert({
+                    id: authData.user.id,
+                    role: data.role || 'patient',
+                    specialization: data.specialization || null,
+                    licensenumber: data.licenseNumber || null,
+                    isactive: true,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                })
+                .select()
+                .single();
 
-                if (profileError) {
-                    console.error('Error creating user profile:', profileError)
-                    // Don't throw here as the auth user was created successfully
-                }
+            if (profileError) {
+                console.error('Error creating profile:', profileError);
+                // Don't throw error here, as the user was created successfully
             }
 
             return {
                 user: authData.user,
-                session: authData.session,
+                session: null, // Admin API doesn't return session
                 error: null
             }
         } catch (error: any) {
@@ -88,22 +85,25 @@ class SupabaseAuthService {
 
     async signIn(data: SignInData) {
         try {
-            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            // Use server-side Supabase client for API operations
+            const supabaseAdmin = createServerSupabaseClient();
+
+            const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
                 email: data.email,
                 password: data.password
-            })
+            });
 
-            if (authError) throw authError
+            if (authError) throw authError;
 
-            // Update last login
+            // Update last login in profiles table
             if (authData.user) {
-                await supabase
-                    .from('users')
+                await supabaseAdmin
+                    .from('profiles')
                     .update({
-                        lastLogin: new Date().toISOString(),
+                        lastlogin: new Date().toISOString(),
                         updated_at: new Date().toISOString()
                     })
-                    .eq('id', authData.user.id)
+                    .eq('id', authData.user.id);
             }
 
             return {
@@ -142,17 +142,20 @@ class SupabaseAuthService {
 
     async getUserProfile(userId: string): Promise<SupabaseUser | null> {
         try {
-            const { data, error } = await supabase
-                .from('users')
+            // Use server-side Supabase client for API operations
+            const supabaseAdmin = createServerSupabaseClient();
+
+            const { data, error } = await supabaseAdmin
+                .from('profiles')
                 .select('*')
                 .eq('id', userId)
-                .single()
+                .single();
 
-            if (error) throw error
-            return data
+            if (error) throw error;
+            return data;
         } catch (error) {
-            console.error('Error fetching user profile:', error)
-            return null
+            console.error('Error fetching user profile:', error);
+            return null;
         }
     }
 
@@ -176,7 +179,7 @@ class SupabaseAuthService {
 
             const supabaseAdmin = createServerSupabaseClient()
             const { data, error: profileError } = await supabaseAdmin
-                .from('users')
+                .from('profiles')
                 .select('*')
                 .eq('id', user.id)
                 .single()
