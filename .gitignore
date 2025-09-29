@@ -148,5 +148,4 @@ temp/
 .supabase/
 *.sql
 scripts/setup-dicom-bucket.sh
-src/utils/testDicomGenerator.ts
 DICOM_BUCKET_SETUP.md
