@@ -1,9 +1,13 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import styled from 'styled-components';
 import { FaPlus, FaSearch, FaFilter, FaUser, FaPhone, FaEnvelope, FaCalendar, FaEye, FaEdit, FaTrash } from 'react-icons/fa';
+import api from '@/services/api';
+import CreatePatientModal from '../topsection/CreatePatientModal';
+import EditPatientModal from './EditPatientModal';
+import ViewPatientModal from './ViewPatientModal';
 
 interface StatusBadgeProps {
   status: string;
@@ -279,79 +283,93 @@ const ActionButton = styled.button`
 const PatientsContent = () => {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [patients, setPatients] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<any | null>(null);
 
-  // Mock data
-  const patients = [
-    {
-      id: 'P001',
-      name: 'Sarah Johnson',
-      email: 'sarah.johnson@email.com',
-      phone: '+1 (555) 123-4567',
-      lastVisit: '2024-08-28',
-      status: 'active'
-    },
-    {
-      id: 'P002',
-      name: 'Michael Chen',
-      email: 'michael.chen@email.com',
-      phone: '+1 (555) 234-5678',
-      lastVisit: '2024-08-25',
-      status: 'active'
-    },
-    {
-      id: 'P003',
-      name: 'Emma Wilson',
-      email: 'emma.wilson@email.com',
-      phone: '+1 (555) 345-6789',
-      lastVisit: '2024-08-20',
-      status: 'pending'
-    },
-    {
-      id: 'P004',
-      name: 'David Brown',
-      email: 'david.brown@email.com',
-      phone: '+1 (555) 456-7890',
-      lastVisit: '2024-08-15',
-      status: 'inactive'
-    },
-    {
-      id: 'P005',
-      name: 'Lisa Garcia',
-      email: 'lisa.garcia@email.com',
-      phone: '+1 (555) 567-8901',
-      lastVisit: '2024-08-10',
-      status: 'active'
+  const loadPatients = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (searchTerm) params.set('search', searchTerm);
+      params.set('page', String(page));
+      params.set('limit', String(limit));
+      // status not supported in API; we filter client-side using isActive
+      const res = await api.get(`/api/patients?${params.toString()}`);
+      const list = res.data?.data?.patients || [];
+      const filtered = statusFilter
+        ? list.filter((p: any) => (p.isActive ? 'active' : 'inactive') === statusFilter)
+        : list;
+      setPatients(filtered);
+      setTotal(res.data?.data?.pagination?.total ?? filtered.length);
+    } catch (e) {
+      setPatients([]);
+    } finally {
+      setLoading(false);
     }
-  ];
-
-  const stats = [
-    { label: 'Total Patients', value: '1,247', icon: <FaUser />, color: '#0694FB' },
-    { label: 'Active Patients', value: '892', icon: <FaUser />, color: '#28A745' },
-    { label: 'New This Month', value: '45', icon: <FaUser />, color: '#FFC107' },
-    { label: 'Pending Reviews', value: '23', icon: <FaUser />, color: '#DC3545' }
-  ];
-
-  const handleAddPatient = () => {
-    console.log('Add new patient');
   };
 
-  const handleViewPatient = (patientId: string) => {
-    console.log('View patient:', patientId);
-  };
+  useEffect(() => {
+    loadPatients();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, statusFilter, page, limit]);
+
+  const stats = useMemo(() => {
+    const active = patients.filter(p => p.isActive).length;
+    const now = new Date();
+    const month = patients.filter(p => {
+      const d = new Date(p.createdAt || p.updatedAt || now);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }).length;
+    return [
+      { label: 'Total Patients', value: String(total), icon: <FaUser />, color: '#0694FB' },
+      { label: 'Active Patients', value: String(active), icon: <FaUser />, color: '#28A745' },
+      { label: 'New This Month', value: String(month), icon: <FaUser />, color: '#FFC107' },
+      { label: 'Pending Reviews', value: '0', icon: <FaUser />, color: '#DC3545' }
+    ];
+  }, [patients, total]);
+
+  const handleAddPatient = () => setShowCreate(true);
 
   const handleEditPatient = (patientId: string) => {
-    console.log('Edit patient:', patientId);
+    const p = patients.find((x:any)=>x.id===patientId)
+    if (p) setEditing(p)
   };
 
-  const handleDeletePatient = (patientId: string) => {
-    console.log('Delete patient:', patientId);
+  const handleDeletePatient = async (patientId: string) => {
+    if (!patientId) return;
+    const confirm = window.confirm('Are you sure you want to delete this patient?')
+    if (!confirm) return;
+    try {
+      setDeletingId(patientId);
+      await api.delete(`/api/patients/${patientId}`)
+      await loadPatients();
+    } catch (e) {
+      alert('Failed to delete patient');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
-  const filteredPatients = patients.filter(patient =>
-    patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    patient.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    patient.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleViewPatient = async (patientId: string) => {
+    try {
+      const res = await api.get(`/api/patients/${patientId}`)
+      const p = res.data?.data?.patient || patients.find((x:any)=>x.id===patientId)
+      if (p) setViewing(p)
+    } catch {
+      const p = patients.find((x:any)=>x.id===patientId)
+      if (p) setViewing(p)
+    }
+  };
+
+  const filteredPatients = patients;
 
   return (
     <ContentContainer>
@@ -375,9 +393,9 @@ const PatientsContent = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </SearchInput>
-        <FilterButton>
+        <FilterButton onClick={() => setStatusFilter(prev => prev === '' ? 'active' : prev === 'active' ? 'inactive' : '')}>
           <FaFilter size={14} />
-          Filter
+          {statusFilter === '' ? 'All' : statusFilter === 'active' ? 'Active' : 'Inactive'}
         </FilterButton>
       </SearchBar>
 
@@ -405,36 +423,40 @@ const PatientsContent = () => {
           <div>Actions</div>
         </TableHeader>
         
-        {filteredPatients.map((patient) => (
+        {loading && (
+          <div style={{ padding: '20px', color: '#A0A0A0' }}>Loading patients...</div>
+        )}
+        {!loading && filteredPatients.map((patient) => (
           <TableRow key={patient.id}>
             <PatientInfo>
               <PatientAvatar>
-                {patient.name.split(' ').map(n => n[0]).join('')}
+                {`${patient.firstName?.[0] || ''}${patient.lastName?.[0] || ''}`}
               </PatientAvatar>
               <PatientDetails>
-                <PatientName>{patient.name}</PatientName>
+                <PatientName>{patient.firstName} {patient.lastName}</PatientName>
                 <PatientId>{patient.id}</PatientId>
               </PatientDetails>
             </PatientInfo>
             
             <ContactInfo>{patient.email}</ContactInfo>
-            <ContactInfo>{patient.phone}</ContactInfo>
-            <ContactInfo>{patient.lastVisit}</ContactInfo>
+            <ContactInfo>{patient.contactNumber || patient.phone}</ContactInfo>
+            <ContactInfo>{new Date(patient.updatedAt || patient.createdAt).toLocaleDateString()}</ContactInfo>
             
-            <StatusBadge status={patient.status}>
-              {patient.status.charAt(0).toUpperCase() + patient.status.slice(1)}
+            <StatusBadge status={patient.isActive ? 'active' : 'inactive'}>
+              {patient.isActive ? 'Active' : 'Inactive'}
             </StatusBadge>
             
             <ActionButtons>
               <ActionButton onClick={() => handleViewPatient(patient.id)}>
                 <FaEye size={14} />
               </ActionButton>
-              <ActionButton onClick={() => handleEditPatient(patient.id)}>
+              <ActionButton onClick={() => setEditing(patient)}>
                 <FaEdit size={14} />
               </ActionButton>
               <ActionButton 
                 className="danger" 
                 onClick={() => handleDeletePatient(patient.id)}
+                disabled={deletingId === patient.id}
               >
                 <FaTrash size={14} />
               </ActionButton>
@@ -442,6 +464,40 @@ const PatientsContent = () => {
           </TableRow>
         ))}
       </PatientsTable>
+
+      <CreatePatientModal
+        isOpen={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSuccess={() => { setShowCreate(false); loadPatients(); }}
+      />
+
+      <EditPatientModal
+        isOpen={!!editing}
+        onClose={() => setEditing(null)}
+        patient={editing}
+        onSuccess={() => { setEditing(null); loadPatients(); }}
+      />
+
+      <ViewPatientModal
+        isOpen={!!viewing}
+        onClose={() => setViewing(null)}
+        patient={viewing}
+      />
+
+      {/* Pagination */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:16 }}>
+        <div style={{ color:'#A0A0A0' }}>Total: {total}</div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1} style={{ padding:'8px 12px', borderRadius:8, background:'#1A1A1A', border:'1px solid #333', color:'#fff' }}>Prev</button>
+          <div style={{ color:'#fff', padding:'8px 12px' }}>{page}</div>
+          <button onClick={()=>setPage(p=>p+1)} disabled={patients.length < limit && page*limit>=total} style={{ padding:'8px 12px', borderRadius:8, background:'#1A1A1A', border:'1px solid #333', color:'#fff' }}>Next</button>
+          <select value={limit} onChange={e=>{ setPage(1); setLimit(parseInt(e.target.value,10)); }} style={{ marginLeft:8, background:'#1A1A1A', color:'#fff', border:'1px solid #333', borderRadius:8, padding:'8px 12px' }}>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={25}>25</option>
+          </select>
+        </div>
+      </div>
     </ContentContainer>
   );
 };

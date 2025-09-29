@@ -1,22 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/supabaseProfilesDatabase';
-import jwt from 'jsonwebtoken';
+import { createServerSupabaseClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SUPABASE_JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-
-// Helper function to verify JWT token
-const verifyToken = (request: NextRequest) => {
+// Helper function to verify Supabase session
+const verifySupabaseSession = async (request: NextRequest) => {
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return null;
     }
     const token = authHeader.substring(7);
     try {
-        return jwt.verify(token, JWT_SECRET) as { id: string };
+        const supabase = createServerSupabaseClient();
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (error || !user) return null;
+        return user;
     } catch (error) {
         return null;
     }
@@ -29,7 +30,7 @@ export async function GET(
 ) {
     try {
         // Verify authentication
-        const user = verifyToken(request);
+        const user = await verifySupabaseSession(request);
         if (!user) {
             return NextResponse.json(
                 { status: 'error', message: 'Authentication required' },

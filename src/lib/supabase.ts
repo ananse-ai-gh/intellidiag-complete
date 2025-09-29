@@ -84,6 +84,11 @@ export interface Database {
                     phone: string
                     email: string
                     address: string
+                    street: string
+                    city: string
+                    state: string
+                    zip_code: string
+                    country: string
                     medical_history: string
                     created_at: string
                     updated_at: string
@@ -96,7 +101,12 @@ export interface Database {
                     gender: 'male' | 'female' | 'other'
                     phone: string
                     email: string
-                    address: string
+                    address?: string
+                    street?: string
+                    city?: string
+                    state?: string
+                    zip_code?: string
+                    country?: string
                     medical_history?: string
                     created_at?: string
                     updated_at?: string
@@ -110,6 +120,11 @@ export interface Database {
                     phone?: string
                     email?: string
                     address?: string
+                    street?: string
+                    city?: string
+                    state?: string
+                    zip_code?: string
+                    country?: string
                     medical_history?: string
                     created_at?: string
                     updated_at?: string
@@ -122,7 +137,7 @@ export interface Database {
                     scan_type: string
                     body_part: string
                     priority: 'low' | 'medium' | 'high' | 'urgent'
-                    status: 'pending' | 'processing' | 'completed' | 'failed' | 'archived'
+                    status: 'pending' | 'processing' | 'completed' | 'failed' | 'archived' | 'deleted'
                     ai_status: 'pending' | 'processing' | 'completed' | 'failed'
                     file_path: string
                     file_name: string
@@ -132,6 +147,8 @@ export interface Database {
                     confidence: number
                     findings: string
                     recommendations: string
+                    notes: string
+                    retry_count: number
                     created_by: string
                     created_at: string
                     updated_at: string
@@ -152,6 +169,8 @@ export interface Database {
                     confidence?: number
                     findings?: string
                     recommendations?: string
+                    notes?: string
+                    retry_count?: number
                     created_by: string
                     created_at?: string
                     updated_at?: string
@@ -172,6 +191,8 @@ export interface Database {
                     confidence?: number
                     findings?: string
                     recommendations?: string
+                    notes?: string
+                    retry_count?: number
                     created_by?: string
                     created_at?: string
                     updated_at?: string
@@ -182,7 +203,7 @@ export interface Database {
                     id: string
                     scan_id: string
                     analysis_type: string
-                    status: 'pending' | 'processing' | 'completed' | 'failed' | 'archived'
+                    status: 'pending' | 'processing' | 'completed' | 'failed' | 'archived' | 'deleted'
                     result: any
                     confidence: number
                     created_at: string
@@ -205,6 +226,70 @@ export interface Database {
                     status?: 'pending' | 'processing' | 'completed' | 'failed'
                     result?: any
                     confidence?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
+            short_urls: {
+                Row: {
+                    id: string
+                    short_code: string
+                    original_url: string
+                    scan_id: string | null
+                    created_by: string
+                    access_count: number
+                    created_at: string
+                    last_accessed: string | null
+                }
+                Insert: {
+                    id?: string
+                    short_code: string
+                    original_url: string
+                    scan_id?: string | null
+                    created_by: string
+                    access_count?: number
+                    created_at?: string
+                    last_accessed?: string | null
+                }
+                Update: {
+                    id?: string
+                    short_code?: string
+                    original_url?: string
+                    scan_id?: string | null
+                    created_by?: string
+                    access_count?: number
+                    created_at?: string
+                    last_accessed?: string | null
+                }
+            }
+            annotations: {
+                Row: {
+                    id: string
+                    scan_id: string
+                    image_index: number
+                    annotation_type: 'shape' | 'text' | 'measurement'
+                    annotation_data: any
+                    created_by: string
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    scan_id: string
+                    image_index?: number
+                    annotation_type: 'shape' | 'text' | 'measurement'
+                    annotation_data: any
+                    created_by: string
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    scan_id?: string
+                    image_index?: number
+                    annotation_type?: 'shape' | 'text' | 'measurement'
+                    annotation_data?: any
+                    created_by?: string
                     created_at?: string
                     updated_at?: string
                 }

@@ -11,6 +11,12 @@
   100% { transform: rotate(360deg); }
 }
 
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
 :root {
   --font-primary: 'SF Pro Display', var(--font-poppins), 'Poppins', sans-serif;
   --font-weight-light: 300;

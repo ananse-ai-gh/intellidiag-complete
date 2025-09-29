@@ -4,12 +4,7 @@
 
 [build.environment]
   NODE_VERSION = "18"
-
-# Redirect all requests to Next.js
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+  NPM_FLAGS = "--legacy-peer-deps"
 
 # Headers for security and performance
 [[headers]]

@@ -10,8 +10,8 @@ import CasesContent from './pages/CasesContent';
 import ScheduleContent from './pages/ScheduleContent';
 import HistoryContent from './pages/HistoryContent';
 import SettingsContent from './pages/SettingsContent';
-import ScansContent from './pages/ScansContentRedesigned';
-import AnalysisContent from './pages/AnalysisContent';
+// Use CasesContent design for scans as well
+import AnalysisDetail from './pages/AnalysisDetail';
 import ReportsContent from './pages/ReportsContent';
 import { DashboardData } from '@/services/dashboardService';
 
@@ -40,7 +40,7 @@ function PageContent({ dashboardData }: PageContentProps) {
     if (pathname.includes('/history')) return 'history';
     if (pathname.includes('/settings')) return 'settings';
     if (pathname.includes('/scans')) return 'scans';
-    if (pathname.includes('/analysis')) return 'analysis';
+    if (pathname.includes('/analysis')) return 'analysis-detail';
     if (pathname.includes('/reports')) return 'reports';
     return null;
   };
@@ -61,8 +61,8 @@ function PageContent({ dashboardData }: PageContentProps) {
         {currentPage === 'schedule' && <ScheduleContent />}
         {currentPage === 'history' && <HistoryContent />}
         {currentPage === 'settings' && <SettingsContent />}
-        {currentPage === 'scans' && <ScansContent />}
-        {currentPage === 'analysis' && <AnalysisContent />}
+        {currentPage === 'scans' && <CasesContent />}
+        {currentPage === 'analysis-detail' && <AnalysisDetail />}
         {currentPage === 'reports' && <ReportsContent />}
       </div>
     );

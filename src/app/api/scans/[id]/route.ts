@@ -70,7 +70,7 @@ export async function GET(
             bodyPart: scan.body_part,
             priority: scan.priority,
             status: scan.status,
-            notes: '',
+            notes: scan.notes || '',
             scanDate: scan.created_at,
             createdAt: scan.created_at,
             updatedAt: scan.updated_at,
@@ -185,7 +185,7 @@ export async function PUT(
     }
 }
 
-// DELETE /api/scans/[id] - Delete a specific scan
+// DELETE /api/scans/[id] - Archive a specific scan
 export async function DELETE(
     request: NextRequest,
     { params }: { params: { id: string } }
@@ -200,7 +200,14 @@ export async function DELETE(
             );
         }
 
+        const { user } = authResult;
         const scanId = params.id;
+
+        // Get user profile to check role
+        const profile = await db.getProfileById(user.id);
+        const isAdmin = profile?.role === 'admin';
+
+        console.log(`🗑️ User ${user.id} (${profile?.role || 'no role'}) attempting to archive scan ${scanId} - Admin: ${isAdmin}`);
 
         // Check if scan exists
         const scan = await db.getScanById(scanId);
@@ -211,15 +218,18 @@ export async function DELETE(
             );
         }
 
-        // Delete AI analysis first (foreign key constraint)
-        const analyses = await db.getAnalysesByScanId(scanId);
-        for (const analysis of analyses) {
-            // Note: We don't have a deleteAnalysis method in db yet
-            // This would need to be implemented if needed
+        // Check if scan is already archived
+        if (scan.status === 'archived') {
+            return NextResponse.json(
+                { status: 'error', message: 'Scan is already archived' },
+                { status: 400 }
+            );
         }
 
         // Archive the scan
         await db.updateScan(scanId, { status: 'archived' });
+
+        console.log(`✅ Scan ${scanId} archived by ${isAdmin ? 'admin' : 'user'} ${user.id}`);
 
         return NextResponse.json({
             status: 'success',
@@ -227,11 +237,76 @@ export async function DELETE(
         });
 
     } catch (error) {
-        console.error('Error deleting scan:', error);
+        console.error('Error archiving scan:', error);
         return NextResponse.json(
             {
                 status: 'error',
-                message: 'Error deleting scan',
+                message: 'Error archiving scan',
+                details: error instanceof Error ? error.message : 'Unknown error'
+            },
+            { status: 500 }
+        );
+    }
+}
+
+// PATCH /api/scans/[id]/permanent-delete - Permanently delete a scan (admin only)
+export async function PATCH(
+    request: NextRequest,
+    { params }: { params: { id: string } }
+) {
+    try {
+        // Verify authentication
+        const authResult = await verifySupabaseSession(request);
+        if (!authResult) {
+            return NextResponse.json(
+                { status: 'error', message: 'Authentication required' },
+                { status: 401 }
+            );
+        }
+
+        const { user } = authResult;
+        const scanId = params.id;
+
+        // Get user profile to check role
+        const profile = await db.getProfileById(user.id);
+        const isAdmin = profile?.role === 'admin';
+
+        console.log(`💀 User ${user.id} (${profile?.role || 'no role'}) attempting permanent delete of scan ${scanId} - Admin: ${isAdmin}`);
+
+        // Only admins can permanently delete scans
+        if (!isAdmin) {
+            return NextResponse.json(
+                { status: 'error', message: 'Admin access required for permanent deletion' },
+                { status: 403 }
+            );
+        }
+
+        // Check if scan exists
+        const scan = await db.getScanById(scanId);
+        if (!scan) {
+            return NextResponse.json(
+                { status: 'error', message: 'Scan not found' },
+                { status: 404 }
+            );
+        }
+
+        // TODO: Implement actual deletion from database
+        // For now, we'll just mark it as permanently deleted
+        await db.updateScan(scanId, { status: 'deleted' as any });
+
+        console.log(`💀 Scan ${scanId} permanently deleted by admin ${user.id}`);
+
+        return NextResponse.json({
+            status: 'success',
+            message: 'Scan permanently deleted'
+        });
+
+    } catch (error) {
+        console.error('Error permanently deleting scan:', error);
+        return NextResponse.json(
+            {
+                status: 'error',
+                message: 'Error permanently deleting scan',
                 details: error instanceof Error ? error.message : 'Unknown error'
             },
             { status: 500 }

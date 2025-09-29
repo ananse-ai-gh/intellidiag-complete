@@ -29,6 +29,7 @@ interface Scan {
   confidence?: number;
   aiFindings?: string;
   imagePath?: string;
+  imageCount?: number; // Number of images/DICOM files
 }
 
 interface TestResult {
@@ -739,7 +740,23 @@ const ScansContent = () => {
       setLoading(true);
       const response = await api.get('/api/scans');
       const scansData = response.data?.data?.scans || [];
-      setScans(Array.isArray(scansData) ? scansData : []);
+      const scansArray = Array.isArray(scansData) ? scansData : [];
+      
+      // Fetch image counts for each scan
+      const scansWithImageCounts = await Promise.all(
+        scansArray.map(async (scan) => {
+          try {
+            const imagesResponse = await api.get(`/api/scans/${scan.scanId}/images`);
+            const imageCount = imagesResponse.data?.data?.images?.length || 0;
+            return { ...scan, imageCount };
+          } catch (error) {
+            console.warn(`Could not fetch image count for scan ${scan.scanId}:`, error);
+            return { ...scan, imageCount: 0 };
+          }
+        })
+      );
+      
+      setScans(scansWithImageCounts);
     } catch (error) {
       console.error('Error loading scans:', error);
       setScans([]);
@@ -831,8 +848,16 @@ const ScansContent = () => {
       return;
     }
 
-    if (selectedFile.size > 10 * 1024 * 1024) { // 10MB limit
-      alert('File size too large. Please select an image smaller than 10MB.');
+    // Validate file size based on file type
+    const isDicomFile = selectedFile.type === 'application/dicom' || 
+                        selectedFile.name.toLowerCase().endsWith('.dcm') || 
+                        selectedFile.name.toLowerCase().endsWith('.dicom');
+    
+    const maxSize = isDicomFile ? 100 * 1024 * 1024 : 10 * 1024 * 1024; // 100MB for DICOM, 10MB for images
+    const maxSizeText = isDicomFile ? '100MB' : '10MB';
+    
+    if (selectedFile.size > maxSize) {
+      alert(`File size too large. Please select a file smaller than ${maxSizeText}.`);
       return;
     }
 
@@ -1033,7 +1058,7 @@ const ScansContent = () => {
                   <input
                     id={`file-${endpoint.id}`}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,.dcm,.dicom"
                     onChange={(e) => handleFileSelect(endpoint.id, e)}
                     style={{ display: 'none' }}
                   />
@@ -1093,8 +1118,12 @@ const ScansContent = () => {
                   <p style={{ margin: '0 0 4px 0', color: '#ccc' }}>
                     Patient: {scan.patientFirstName} {scan.patientLastName}
                   </p>
-                  <p style={{ margin: '0', color: '#ccc' }}>
+                  <p style={{ margin: '0 0 4px 0', color: '#ccc' }}>
                     Type: {scan.scanType} | Body Part: {scan.bodyPart} | Status: {scan.status}
+                  </p>
+                  <p style={{ margin: '0', color: '#0694fb', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FaImage size={12} />
+                    {scan.imageCount || 0} {scan.imageCount === 1 ? 'image' : 'images'}
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>

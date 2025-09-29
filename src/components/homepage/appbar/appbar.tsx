@@ -25,7 +25,7 @@ const NotificationBadge = styled.div`
   }
 `;
 
-const NotificationPanel = styled.div<{ isOpen: boolean }>`
+const NotificationPanel = styled.div<{ $isOpen: boolean }>`
   position: absolute;
   top: 100%;
   right: 0;
@@ -36,9 +36,9 @@ const NotificationPanel = styled.div<{ isOpen: boolean }>`
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   z-index: 1000;
-  opacity: ${props => props.isOpen ? 1 : 0};
-  visibility: ${props => props.isOpen ? 'visible' : 'hidden'};
-  transform: ${props => props.isOpen ? 'translateY(8px)' : 'translateY(-8px)'};
+  opacity: ${props => props.$isOpen ? 1 : 0};
+  visibility: ${props => props.$isOpen ? 'visible' : 'hidden'};
+  transform: ${props => props.$isOpen ? 'translateY(8px)' : 'translateY(-8px)'};
   transition: all 0.3s ease;
   overflow: hidden;
 `;
@@ -133,7 +133,7 @@ const NotificationEmpty = styled.div`
   font-size: 14px;
 `;
 
-const AvatarDropdown = styled.div<{ isOpen: boolean }>`
+const AvatarDropdown = styled.div<{ $isOpen: boolean }>`
   position: absolute;
   top: 100%;
   right: 0;
@@ -143,9 +143,9 @@ const AvatarDropdown = styled.div<{ isOpen: boolean }>`
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   z-index: 1000;
-  opacity: ${props => props.isOpen ? 1 : 0};
-  visibility: ${props => props.isOpen ? 'visible' : 'hidden'};
-  transform: ${props => props.isOpen ? 'translateY(8px)' : 'translateY(-8px)'};
+  opacity: ${props => props.$isOpen ? 1 : 0};
+  visibility: ${props => props.$isOpen ? 'visible' : 'hidden'};
+  transform: ${props => props.$isOpen ? 'translateY(8px)' : 'translateY(-8px)'};
   transition: all 0.3s ease;
   overflow: hidden;
 `;
@@ -365,7 +365,7 @@ function Appbar() {
           />
           {unreadCount > 0 && <NotificationBadge />}
           
-          <NotificationPanel isOpen={notificationsOpen}>
+          <NotificationPanel $isOpen={notificationsOpen}>
             <NotificationHeader>
               <NotificationTitle>Notifications</NotificationTitle>
               <ClearButton onClick={clearNotifications}>
@@ -471,7 +471,7 @@ function Appbar() {
             />
           </div>
 
-          <AvatarDropdown isOpen={avatarDropdownOpen}>
+          <AvatarDropdown $isOpen={avatarDropdownOpen}>
             <DropdownHeader>
               <DropdownUserInfo>
                 <DropdownUserName>{getUserDisplayName()}</DropdownUserName>

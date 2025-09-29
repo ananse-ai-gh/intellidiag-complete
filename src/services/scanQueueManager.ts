@@ -1,4 +1,4 @@
-import { db } from '@/lib/supabaseProfilesDatabase';
+import { db } from '@/lib/database';
 import { aiAnalysisService } from '@/services/aiAnalysisService';
 
 export interface QueueItem {
@@ -141,13 +141,16 @@ class ScanQueueManager {
             });
 
             const scan = queuedScans[0];
+            // Get retry count from scan metadata or default to 0
+            const retryCount = (scan as any).retry_count || 0;
+
             return {
                 id: scan.id,
                 scanId: scan.id,
                 scanType: scan.scan_type,
                 priority: 2, // Default priority
                 status: scan.status,
-                retryCount: 0,
+                retryCount: retryCount,
                 createdAt: scan.created_at,
                 queuePosition: 1
             };
@@ -167,7 +170,14 @@ class ScanQueueManager {
             // Get scan image
             const scanImage = await this.getScanImage(item.scanId);
             if (!scanImage) {
-                throw new Error('Scan image not found');
+                // Mark as failed if no image available (e.g., old scans with local paths)
+                await this.updateScanStatus(item.scanId, 'failed', 'Image not available - old scan format');
+                return {
+                    success: false,
+                    status: 'failed',
+                    error: 'Image not available - old scan format',
+                    processingTime: Date.now() - startTime
+                };
             }
 
             // Process with AI service
@@ -242,24 +252,31 @@ class ScanQueueManager {
         const newRetryCount = item.retryCount + 1;
 
         if (newRetryCount <= this.MAX_RETRIES) {
-            // Retry
-            await this.updateScanStatus(item.scanId, 'pending', error);
+            // Retry - update status to pending with new retry count
+            await this.updateScanStatus(item.scanId, 'pending', error, undefined, newRetryCount);
             console.log(`🔄 Retrying scan ${item.scanId} (attempt ${newRetryCount}/${this.MAX_RETRIES})`);
         } else {
-            // Max retries reached
-            await this.updateScanStatus(item.scanId, 'failed', error);
-            console.log(`❌ Scan ${item.scanId} failed after ${this.MAX_RETRIES} retries`);
+            // Max retries reached - mark as failed
+            await this.updateScanStatus(item.scanId, 'failed', error, undefined, newRetryCount);
+            console.log(`❌ Scan ${item.scanId} failed after ${this.MAX_RETRIES} retries - no more retries`);
         }
     }
 
     /**
      * Update scan status
      */
-    private async updateScanStatus(scanId: string, status: string, errorMessage?: string, processingTime?: number): Promise<void> {
+    private async updateScanStatus(scanId: string, status: string, errorMessage?: string, processingTime?: number, retryCount?: number): Promise<void> {
         try {
-            await db.updateScan(scanId, {
+            const updateData: any = {
                 status: status as 'pending' | 'processing' | 'completed' | 'failed'
-            });
+            };
+
+            // Add retry count if provided
+            if (retryCount !== undefined) {
+                updateData.retry_count = retryCount;
+            }
+
+            await db.updateScan(scanId, updateData);
         } catch (error) {
             console.error(`❌ Error updating scan status for ${scanId}:`, error);
         }
@@ -272,13 +289,27 @@ class ScanQueueManager {
         try {
             const scan = await db.getScanById(scanId);
             if (!scan || !scan.file_path) {
+                console.log(`❌ No scan or file path found for ${scanId}`);
                 return null;
             }
 
-            // Convert image path to File object
-            const response = await fetch(scan.file_path);
-            const blob = await response.blob();
-            return new File([blob], scan.file_name, { type: scan.mime_type });
+            console.log(`📷 Fetching image for scan ${scanId} from: ${scan.file_path}`);
+
+            // Check if it's a Supabase Storage URL (new format) or local path (old format)
+            if (scan.file_path.startsWith('http')) {
+                // Supabase Storage URL - fetch directly
+                const response = await fetch(scan.file_path);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch image: ${response.statusText}`);
+                }
+
+                const blob = await response.blob();
+                return new File([blob], scan.file_name, { type: scan.mime_type });
+            } else {
+                // Old local path - skip processing for now
+                console.log(`⚠️ Skipping old scan ${scanId} with local path: ${scan.file_path}`);
+                return null;
+            }
         } catch (error) {
             console.error(`❌ Error getting scan image for ${scanId}:`, error);
             return null;
@@ -353,6 +384,34 @@ class ScanQueueManager {
         } catch (error) {
             console.error('❌ Error getting queue stats:', error);
             return [];
+        }
+    }
+
+    /**
+     * Clear the queue by marking all pending/processing scans as failed
+     */
+    async clearQueue(): Promise<void> {
+        try {
+            console.log('🧹 Clearing queue...');
+
+            // Get all pending and processing scans
+            const allScans = await db.getAllScans();
+            const queuedScans = allScans.filter(scan =>
+                ['pending', 'processing'].includes(scan.status)
+            );
+
+            console.log(`📋 Found ${queuedScans.length} scans to clear`);
+
+            // Mark each scan as failed
+            for (const scan of queuedScans) {
+                await this.updateScanStatus(scan.id, 'failed', 'Queue cleared by admin');
+                console.log(`✅ Cleared scan ${scan.id}`);
+            }
+
+            console.log(`🎉 Queue cleared successfully - ${queuedScans.length} scans marked as failed`);
+        } catch (error) {
+            console.error('❌ Error clearing queue:', error);
+            throw error;
         }
     }
 

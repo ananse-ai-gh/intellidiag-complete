@@ -542,7 +542,21 @@ const CreateCaseModal: React.FC<CreateCaseModalProps> = ({ isOpen, onClose, onSu
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      // Validate file size based on file type
+      const isDicomFile = file.type === 'application/dicom' || 
+                          file.name.toLowerCase().endsWith('.dcm') || 
+                          file.name.toLowerCase().endsWith('.dicom');
+      
+      const maxSize = isDicomFile ? 100 * 1024 * 1024 : 10 * 1024 * 1024; // 100MB for DICOM, 10MB for images
+      const maxSizeText = isDicomFile ? '100MB' : '10MB';
+      
+      if (file.size > maxSize) {
+        setError(`File size too large. Please select a file smaller than ${maxSizeText}.`);
+        return;
+      }
+      
       setSelectedFile(file);
+      setError(null); // Clear any previous errors
     }
   };
 
@@ -551,8 +565,24 @@ const CreateCaseModal: React.FC<CreateCaseModalProps> = ({ isOpen, onClose, onSu
     setDragOver(false);
     
     const file = event.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
+    if (file && (file.type.startsWith('image/') || file.type === 'application/dicom' || 
+                 file.name.toLowerCase().endsWith('.dcm') || file.name.toLowerCase().endsWith('.dicom'))) {
+      
+      // Validate file size based on file type
+      const isDicomFile = file.type === 'application/dicom' || 
+                          file.name.toLowerCase().endsWith('.dcm') || 
+                          file.name.toLowerCase().endsWith('.dicom');
+      
+      const maxSize = isDicomFile ? 100 * 1024 * 1024 : 10 * 1024 * 1024; // 100MB for DICOM, 10MB for images
+      const maxSizeText = isDicomFile ? '100MB' : '10MB';
+      
+      if (file.size > maxSize) {
+        setError(`File size too large. Please select a file smaller than ${maxSizeText}.`);
+        return;
+      }
+      
       setSelectedFile(file);
+      setError(null); // Clear any previous errors
     }
   };
 
@@ -836,7 +866,7 @@ const CreateCaseModal: React.FC<CreateCaseModalProps> = ({ isOpen, onClose, onSu
                 <HiddenFileInput
                   id="file-input"
                   type="file"
-                  accept="image/*"
+                  accept="image/*,.dcm,.dicom"
                   onChange={handleFileSelect}
                 />
               </FormSection>

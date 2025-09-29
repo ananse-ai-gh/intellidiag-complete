@@ -602,13 +602,13 @@ export const CreateScanModal = ({
                   {formData.scanImage ? formData.scanImage.name : 'Click to upload scan image'}
                 </FileUploadText>
                 <FileUploadSubtext>
-                  Supported formats: JPG, PNG, DICOM (Max 10MB)
+                  Supported formats: JPG, PNG, GIF, BMP, TIFF (Max 10MB), DICOM (Max 100MB)
                 </FileUploadSubtext>
               </FileUpload>
               <input
                 id="scan-image-upload"
                 type="file"
-                accept="image/*,.dcm"
+                accept="image/*,.dcm,.dicom"
                 onChange={handleFileUpload}
                 style={{ display: 'none' }}
                 required

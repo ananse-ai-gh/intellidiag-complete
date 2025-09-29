@@ -1,8 +1,11 @@
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react';
-import { FaSearchPlus, FaSearchMinus, FaExpand, FaCompress, FaDownload, FaRedo } from 'react-icons/fa';
+import { FaSearchPlus, FaSearchMinus, FaExpand, FaCompress, FaDownload, FaRedo, FaFileMedical, FaInfoCircle } from 'react-icons/fa';
 import styled from 'styled-components';
+import { isDicomFile } from '@/utils/fileUtils';
+import { supabase } from '@/lib/supabase';
+import DicomViewer from './DicomViewer';
 
 interface ImageViewerProps {
   imageUrl: string;
@@ -12,6 +15,7 @@ interface ImageViewerProps {
   initialZoom?: number;
   maxZoom?: number;
   minZoom?: number;
+  inlineDicomViewer?: boolean; // New prop for inline DICOM viewing
 }
 
 const ViewerContainer = styled.div`
@@ -26,23 +30,22 @@ const ViewerContainer = styled.div`
 
 const ImageContainer = styled.div<{ scale: number; translateX: number; translateY: number }>`
   position: relative;
-  width: 100%;
-  height: 100%;
   transform: scale(${props => props.scale}) translate(${props => props.translateX}px, ${props => props.translateY}px);
   transform-origin: center center;
   transition: transform 0.1s ease-out;
-  cursor: ${props => props.scale > 1 ? 'grab' : 'default'};
-  
-  &:active {
-    cursor: ${props => props.scale > 1 ? 'grabbing' : 'default'};
-  }
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 `;
 
 const Image = styled.img`
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
-  display: block;
+  filter: contrast(1.1) brightness(1.1);
+  transition: all 0.3s ease;
 `;
 
 const Controls = styled.div`
@@ -62,14 +65,14 @@ const ControlButton = styled.button`
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: white;
   padding: 8px;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
   
-  &:hover {
+  &:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.2);
     transform: scale(1.05);
   }
@@ -77,7 +80,6 @@ const ControlButton = styled.button`
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    transform: none;
   }
 `;
 
@@ -93,18 +95,98 @@ const ZoomInfo = styled.div`
   backdrop-filter: blur(10px);
 `;
 
-const LoadingOverlay = styled.div`
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
+
+// Inline DICOM Viewer Components
+const DicomContainer = styled.div`
+  width: 100%;
+  height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
   color: white;
+  padding: 40px;
+  text-align: center;
+`;
+
+const DicomIcon = styled.div`
+  font-size: 80px;
+  color: #0694fb;
+  margin-bottom: 24px;
+  opacity: 0.9;
+`;
+
+const DicomTitle = styled.h3`
+  color: #0694fb;
+  margin: 0 0 16px 0;
+  font-size: 24px;
+  font-weight: 600;
+`;
+
+const DicomMessage = styled.div`
+  font-size: 16px;
+  line-height: 1.6;
+  margin-bottom: 24px;
+  opacity: 0.9;
+  max-width: 500px;
+`;
+
+const DicomButtonGroup = styled.div`
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+`;
+
+const DicomButton = styled.button`
+  background: rgba(6, 148, 251, 0.2);
+  border: 1px solid rgba(6, 148, 251, 0.5);
+  color: #0694fb;
+  padding: 12px 20px;
+  border-radius: 8px;
+  cursor: pointer;
   font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: rgba(6, 148, 251, 0.3);
+    transform: translateY(-2px);
+  }
+`;
+
+const DicomMetadata = styled.div`
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 20px;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.5;
+`;
+
+const MetadataRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const MetadataLabel = styled.span`
+  color: #8aa;
+  font-weight: 500;
+`;
+
+const MetadataValue = styled.span`
+  color: #fff;
 `;
 
 const ImageViewer: React.FC<ImageViewerProps> = ({
@@ -114,22 +196,56 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
   showControls = true,
   initialZoom = 1,
   maxZoom = 5,
-  minZoom = 0.5
+  minZoom = 0.5,
+  inlineDicomViewer = false
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [scale, setScale] = useState(initialZoom);
   const [translateX, setTranslateX] = useState(0);
   const [translateY, setTranslateY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [isLoading, setIsLoading] = useState(true);
+  const [rotation, setRotation] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [showDicomViewer, setShowDicomViewer] = useState(false);
+  const [dicomMetadata, setDicomMetadata] = useState<any>(null);
+
+  const isDicom = isDicomFile(imageUrl);
+
+  // Debug logging
+  console.log('🔍 ImageViewer file analysis:', {
+    imageUrl,
+    alt,
+    isDicom,
+    inlineDicomViewer,
+    willUseDicomViewer: isDicom && inlineDicomViewer
+  });
 
   useEffect(() => {
     setIsLoading(true);
-  }, [imageUrl]);
+    setScale(initialZoom);
+    setTranslateX(0);
+    setTranslateY(0);
+    setRotation(0);
+  }, [imageUrl, initialZoom]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   const handleImageLoad = () => {
+    console.log('🖼️ Regular image loaded successfully');
+    setIsLoading(false);
+  };
+
+  const handleImageError = () => {
+    console.log('❌ Regular image failed to load');
     setIsLoading(false);
   };
 
@@ -145,32 +261,41 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
     setScale(initialZoom);
     setTranslateX(0);
     setTranslateY(0);
+    setRotation(0);
   };
 
   const handleRotate = () => {
-    // Simple rotation by 90 degrees
-    setScale(prev => prev);
-    // Note: For actual rotation, you'd need to modify the image transform
+    setRotation(prev => (prev + 90) % 360);
   };
 
   const handleDownload = () => {
     const link = document.createElement('a');
     link.href = imageUrl;
-    link.download = `scan-${Date.now()}.jpg`;
+    link.download = alt || 'image';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (scale > 1) {
+    if (e.button === 0) { // Left click only
       setIsDragging(true);
       setDragStart({ x: e.clientX - translateX, y: e.clientY - translateY });
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging && scale > 1) {
+    if (isDragging) {
       setTranslateX(e.clientX - dragStart.x);
       setTranslateY(e.clientY - dragStart.y);
     }
@@ -186,24 +311,30 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
     setScale(prev => Math.max(minZoom, Math.min(maxZoom, prev * delta)));
   };
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen();
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
-    }
+  const handleDicomDownload = () => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = alt || 'dicom-file';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
+  const handleOpenOHIF = () => {
+    window.open('https://viewer.ohif.org/', '_blank');
+  };
 
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
+  const handleShowMetadata = () => {
+    // For now, show basic metadata
+    // In a real implementation, you'd fetch DICOM metadata from the API
+    setDicomMetadata({
+      fileName: alt || 'DICOM File',
+      fileSize: 'Unknown',
+      modality: 'Unknown',
+      studyDate: 'Unknown',
+      patientName: 'Unknown'
+    });
+  };
 
   return (
     <ViewerContainer
@@ -215,26 +346,46 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
       onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
     >
-      {isLoading && (
-        <LoadingOverlay>
-          Loading image...
-        </LoadingOverlay>
-      )}
-      
-      <ImageContainer
-        scale={scale}
-        translateX={translateX}
-        translateY={translateY}
-      >
-        <Image
-          src={imageUrl}
-          alt={alt}
-          onLoad={handleImageLoad}
-          draggable={false}
+      {isDicom && inlineDicomViewer ? (
+        <DicomViewer
+          dicomUrl={imageUrl}
+          fileName={alt || 'DICOM File'}
+          showControls={showControls}
         />
-      </ImageContainer>
+      ) : isDicom ? (
+        <DicomContainer>
+          <DicomIcon>
+            <FaFileMedical />
+          </DicomIcon>
+          <DicomTitle>DICOM File</DicomTitle>
+          <DicomMessage>
+            This is a DICOM medical imaging file.<br />
+            Click below to open in the DICOM viewer.
+          </DicomMessage>
+          <DicomButton onClick={() => setShowDicomViewer(true)}>
+            Open DICOM Viewer
+          </DicomButton>
+        </DicomContainer>
+      ) : (
+        <>
+          <ImageContainer
+            scale={scale}
+            translateX={translateX}
+            translateY={translateY}
+          >
+            <Image
+              src={imageUrl}
+              alt={alt}
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+              draggable={false}
+              style={{ transform: `rotate(${rotation}deg)` }}
+            />
+          </ImageContainer>
+        </>
+      )}
 
-      {showControls && (
+      {showControls && !isDicom && (
         <Controls>
           <ControlButton onClick={handleZoomIn} disabled={scale >= maxZoom}>
             <FaSearchPlus />
@@ -257,9 +408,11 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
         </Controls>
       )}
 
-      <ZoomInfo>
-        Zoom: {Math.round(scale * 100)}%
-      </ZoomInfo>
+      {showControls && !isDicom && (
+        <ZoomInfo>
+          Zoom: {Math.round(scale * 100)}%
+        </ZoomInfo>
+      )}
     </ViewerContainer>
   );
 };

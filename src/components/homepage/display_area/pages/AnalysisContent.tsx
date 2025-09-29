@@ -9,9 +9,10 @@ import {
   FaCheckSquare, FaSquare, FaPrint, FaEnvelope, FaCopy, FaLink,
   FaImage, FaFileMedical, FaHeartbeat, FaLungs, FaBrain as FaBrainIcon,
   FaBone, FaEye as FaEyeIcon, FaHistory, FaChartLine, FaRobot,
-  FaExclamationTriangle, FaCheckCircle, FaSpinner, FaRedo, FaInfo
+  FaExclamationTriangle, FaCheckCircle, FaSpinner, FaRedo, FaInfo, FaShare
 } from 'react-icons/fa';
 import api from '@/services/api';
+import ShareModal from '@/components/ShareModal';
 import styled from 'styled-components';
 
 interface Analysis {
@@ -809,10 +810,83 @@ const AnalysisContent = () => {
     avgConfidence: 0
   });
 
+  // Share modal state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [shareData, setShareData] = useState<any>(null);
+
   const showNotification = useCallback((type: 'success' | 'error' | 'info', message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 5000);
   }, []);
+  // Share current analysis (short URL with one-to-one mapping like scans)
+  const handleShareAnalysis = async (scanId: string) => {
+    try {
+      const currentPath = window.location.pathname;
+      const basePath = currentPath.split('/').slice(0, -1).join('/');
+      const originalUrl = `${window.location.origin}${basePath}/analysis/${scanId}`;
+
+      console.log('Creating analysis share link:', { scanId, originalUrl });
+
+      try {
+        const response = await api.post('/api/urls/shorten', {
+          originalUrl,
+          scanId
+        });
+
+        if (response.data.status === 'success') {
+          const shortUrl = response.data.data.shortUrl;
+          setShareUrl(shortUrl);
+          setShareData({
+            ...response.data.data,
+            scanId,
+            originalUrl
+          });
+          setShowShareModal(true);
+          return;
+        } else {
+          console.warn('Shorten response not success:', response.data);
+        }
+      } catch (err: any) {
+        console.warn('Short URL creation failed for analysis, falling back.', err?.response?.data || err?.message);
+      }
+
+      // Fallback to original URL
+      setShareUrl(originalUrl);
+      setShareData({
+        shortUrl: originalUrl,
+        originalUrl,
+        scanId,
+        isExisting: false,
+        createdAt: new Date().toISOString()
+      });
+      setShowShareModal(true);
+    } catch (error) {
+      console.error('Error sharing analysis:', error);
+      showNotification('error', 'Failed to generate share link.');
+    }
+  };
+
+  const handleRegenerateShareLink = async () => {
+    if (!shareData?.scanId || !shareData?.originalUrl) return;
+    try {
+      const response = await api.post('/api/urls/regenerate', {
+        originalUrl: shareData.originalUrl,
+        scanId: shareData.scanId
+      });
+      if (response.data.status === 'success') {
+        const shortUrl = response.data.data.shortUrl;
+        setShareUrl(shortUrl);
+        setShareData(response.data.data);
+        showNotification('success', 'New share link generated.');
+      } else {
+        showNotification('error', 'Failed to regenerate share link.');
+      }
+    } catch (error) {
+      console.error('Regenerate link error:', error);
+      showNotification('error', 'Failed to regenerate share link.');
+    }
+  };
 
   const loadAnalyses = useCallback(async () => {
     try {
@@ -1533,11 +1607,30 @@ const AnalysisContent = () => {
                     <FaDownload size={14} />
                   </ActionButton>
                 )}
+                <ActionButton
+                  onClick={() => handleShareAnalysis(analysis.scanId)}
+                  title="Share"
+                >
+                  <FaShare size={14} />
+                </ActionButton>
               </ActionButtons>
             </AnalysisCard>
           ))}
         </AnalysisGrid>
       )}
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        url={shareUrl}
+        title="Share Analysis"
+        scanId={shareData?.scanId}
+        originalUrl={shareData?.originalUrl}
+        isExisting={shareData?.isExisting}
+        createdAt={shareData?.createdAt}
+        onRegenerate={handleRegenerateShareLink}
+      />
     </ContentContainer>
   );
 };

@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/database';
-import { supabase } from '@/lib/supabase';
-import { writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { supabase, createServerSupabaseClient } from '@/lib/supabase';
 import { scanQueueManager } from '@/services/scanQueueManager';
 
 export const dynamic = 'force-dynamic';
@@ -25,33 +23,52 @@ const verifyToken = async (request: NextRequest) => {
     }
 };
 
+const STORAGE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || 'scan-images';
+
 // POST /api/scans - Create a new scan
 export async function POST(request: NextRequest) {
     try {
+        console.log('🔍 Scan creation API called');
+        console.log('Content-Type:', request.headers.get('content-type'));
+        console.log('Authorization:', request.headers.get('authorization') ? 'Present' : 'Missing');
+
         // Verify authentication
         const user = await verifyToken(request);
         if (!user) {
+            console.log('❌ Authentication failed');
             return NextResponse.json(
                 { status: 'error', message: 'Authentication required' },
                 { status: 401 }
             );
         }
 
+        console.log('✅ User authenticated:', user.id);
+
         // Parse multipart form data
         const formData = await request.formData();
+        console.log('✅ FormData parsed successfully');
 
         // Extract form fields
         const patientId = formData.get('patientId') as string;
         const scanType = formData.get('scanType') as string;
         const bodyPart = formData.get('bodyPart') as string;
-        const priority = formData.get('priority') as string;
+        const priority = (formData.get('priority') as string) || 'medium';
         const notes = formData.get('notes') as string;
         const scanDate = formData.get('scanDate') as string;
         const analysisType = formData.get('analysisType') as string;
         const scanImage = formData.get('scanImage') as File;
+        const scanImages = formData.getAll('scanImages') as File[];
+
+        console.log('📋 Form fields received:');
+        console.log('- patientId:', patientId);
+        console.log('- scanType:', scanType);
+        console.log('- bodyPart:', bodyPart);
+        console.log('- priority:', priority);
+        console.log('- scanImage:', scanImage ? `${scanImage.name} (${scanImage.size} bytes)` : 'Missing');
 
         // Validate required fields
-        if (!patientId || !scanType || !bodyPart || !scanImage) {
+        if (!patientId || !scanType || !bodyPart || (!scanImage && (!scanImages || scanImages.length === 0))) {
+            console.log('❌ Missing required fields');
             return NextResponse.json(
                 { status: 'error', message: 'Missing required fields' },
                 { status: 400 }
@@ -70,58 +87,113 @@ export async function POST(request: NextRequest) {
         // Generate unique scan ID
         const scanId = `SCAN-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 
-        // Handle file upload
+        // Handle file upload to Supabase Storage (support multiple)
         let imagePath = '';
-        if (scanImage) {
-            const bytes = await scanImage.arrayBuffer();
-            const buffer = Buffer.from(bytes);
+        const uploadedImagePaths: string[] = [];
+        const filesToUpload: File[] = (scanImages && scanImages.length > 0) ? scanImages : (scanImage ? [scanImage] : []);
+        if (filesToUpload.length > 0) {
+            const serverSupabase = createServerSupabaseClient();
+            let idx = 0;
+            for (const file of filesToUpload) {
+                const bytes = await file.arrayBuffer();
+                const buffer = Buffer.from(bytes);
 
-            // Create uploads directory if it doesn't exist
-            const uploadsDir = join(process.cwd(), 'public', 'uploads');
-            await mkdir(uploadsDir, { recursive: true });
+                const ext = file.name.split('.').pop();
+                const suffix = idx === 0 ? '' : `-${idx}`;
+                const fileName = `${scanId}${suffix}.${ext}`;
+                const filePath = `scans/${fileName}`;
 
-            // Generate unique filename
-            const fileExtension = scanImage.name.split('.').pop();
-            const fileName = `${scanId}.${fileExtension}`;
-            imagePath = `/uploads/${fileName}`;
+                const { error: upErr } = await serverSupabase.storage
+                    .from(STORAGE_BUCKET)
+                    .upload(filePath, buffer, { contentType: file.type, upsert: false });
+                if (upErr) {
+                    console.error('❌ Error uploading to Supabase Storage:', upErr);
+                    return NextResponse.json({ status: 'error', message: 'Failed to upload image' }, { status: 500 });
+                }
 
-            // Save file
-            await writeFile(join(uploadsDir, fileName), buffer);
+                const { data: signedData, error: signedErr } = await serverSupabase.storage
+                    .from(STORAGE_BUCKET)
+                    .createSignedUrl(filePath, 60 * 60 * 24 * 7);
+                if (signedErr) {
+                    console.error('❌ Error creating signed URL:', signedErr);
+                    return NextResponse.json({ status: 'error', message: 'Failed to create signed URL' }, { status: 500 });
+                }
+                uploadedImagePaths.push(signedData.signedUrl);
+                if (idx === 0) imagePath = signedData.signedUrl; // first image thumbnail
+                idx += 1;
+            }
         }
 
         // Create scan in database
-        const scan = await db.createScan({
+        console.log('📝 Creating scan in database with data:', {
             patient_id: patientId,
             scan_type: scanType,
             body_part: bodyPart,
-            priority: priority as 'low' | 'medium' | 'high' | 'urgent' || 'medium',
+            priority: priority,
             status: 'pending',
             file_path: imagePath,
-            file_name: scanImage.name,
-            file_size: scanImage.size,
-            mime_type: scanImage.type,
+            file_name: (filesToUpload[0] as File).name,
+            file_size: (filesToUpload[0] as File).size,
+            mime_type: (filesToUpload[0] as File).type,
             created_by: user.id
         });
 
-        // Create initial AI analysis record
-        await db.createAnalysis({
-            scan_id: scan.id,
-            analysis_type: analysisType || 'auto',
-            status: 'pending',
-            confidence: 0,
-            result: {}
-        });
+        let scan;
+        let scanData;
+        try {
+            // Start with minimal required fields
+            scanData = {
+                patient_id: patientId,
+                scan_type: scanType,
+                body_part: bodyPart,
+                priority: (priority as 'low' | 'medium' | 'high' | 'urgent') || 'medium',
+                status: 'pending' as 'pending' | 'processing' | 'completed' | 'failed',
+                file_path: imagePath,
+                file_name: (filesToUpload[0] as File).name,
+                file_size: (filesToUpload[0] as File).size,
+                mime_type: (filesToUpload[0] as File).type,
+                created_by: user.id
+            };
 
-        // Add to processing queue
-        const queueSuccess = await scanQueueManager.addToQueue(scanId, scanType, priority as any);
+            console.log('📝 Creating scan with data:', scanData);
+            scan = await db.createScan(scanData);
+            console.log('✅ Scan created successfully:', scan.id);
 
-        if (!queueSuccess) {
-            return NextResponse.json({
-                status: 'error',
-                message: 'Scan created but failed to add to processing queue',
-                data: { scanId }
-            }, { status: 500 });
+            // Update with additional fields after creation
+            try {
+                await db.updateScan(scan.id, {
+                    ai_status: 'pending',
+                    ai_analysis: null,
+                    confidence: 0,
+                    findings: '',
+                    recommendations: '',
+                    notes: notes || '',
+                    retry_count: 0
+                });
+                console.log('✅ Scan updated with additional fields');
+            } catch (updateError) {
+                console.warn('⚠️ Warning: Could not update scan with additional fields:', updateError);
+                // Don't fail the entire operation for this
+            }
+
+        } catch (dbError) {
+            console.error('❌ Database error creating scan:', dbError);
+            console.error('❌ Error details:', JSON.stringify(dbError, null, 2));
+            console.error('❌ Scan data that failed:', JSON.stringify(scanData, null, 2));
+            return NextResponse.json(
+                {
+                    status: 'error',
+                    message: 'Database error creating scan',
+                    details: dbError instanceof Error ? dbError.message : 'Unknown database error',
+                    errorCode: (dbError as any)?.code,
+                    errorHint: (dbError as any)?.hint
+                },
+                { status: 500 }
+            );
         }
+
+        // Do not start analysis automatically. Analysis will be triggered from the analysis page.
+        console.log('ℹ️ Skipping auto-analysis and queueing for scan:', scan.id);
 
         // Transform to expected format
         const createdScan = {
@@ -148,6 +220,7 @@ export async function POST(request: NextRequest) {
                 scan: createdScan,
                 scanId: scanId,
                 imagePath: imagePath,
+                imagePaths: uploadedImagePaths,
                 queueStatus: 'queued',
                 message: 'Scan is queued for AI processing'
             }
@@ -178,6 +251,12 @@ export async function GET(request: NextRequest) {
             );
         }
 
+        // Get user profile to check role
+        const profile = await db.getProfileById(user.id);
+        const isAdmin = profile?.role === 'admin';
+
+        console.log(`📋 User ${user.id} (${profile?.role || 'no role'}) requesting scans - Admin: ${isAdmin}`);
+
         // Get query parameters
         const { searchParams } = new URL(request.url);
         const page = parseInt(searchParams.get('page') || '1');
@@ -185,9 +264,22 @@ export async function GET(request: NextRequest) {
         const status = searchParams.get('status');
         const scanType = searchParams.get('scanType');
         const patientId = searchParams.get('patientId');
+        const includeArchived = searchParams.get('includeArchived') === 'true';
 
         // Get all scans
         let allScans = await db.getAllScans();
+
+        // Filter out archived scans for non-admin users
+        if (!isAdmin) {
+            allScans = allScans.filter(scan => scan.status !== 'archived');
+            console.log(`🔒 Non-admin user - filtered out archived scans. Remaining: ${allScans.length}`);
+        } else if (!includeArchived) {
+            // Even admins need to explicitly request archived scans
+            allScans = allScans.filter(scan => scan.status !== 'archived');
+            console.log(`👑 Admin user - excluding archived scans by default. Remaining: ${allScans.length}`);
+        } else {
+            console.log(`👑 Admin user - including archived scans. Total: ${allScans.length}`);
+        }
 
         // Apply filters
         if (status) {
@@ -218,7 +310,9 @@ export async function GET(request: NextRequest) {
                 bodyPart: scan.body_part,
                 priority: scan.priority,
                 status: scan.status,
-                notes: '',
+                file_path: scan.file_path,
+                file_name: scan.file_name,
+                notes: scan.notes || '',
                 scanDate: scan.created_at,
                 createdAt: scan.created_at,
                 updatedAt: scan.updated_at,
@@ -288,7 +382,8 @@ export async function PUT(request: NextRequest) {
         const updatedScan = await db.updateScan(scanId, {
             scan_type: scanType,
             body_part: bodyPart,
-            priority: priority as 'low' | 'medium' | 'high' | 'urgent'
+            priority: priority as 'low' | 'medium' | 'high' | 'urgent',
+            notes: notes || ''
         });
 
         // Get patient details

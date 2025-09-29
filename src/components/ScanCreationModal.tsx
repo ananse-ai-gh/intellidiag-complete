@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { FaUpload, FaTimes, FaBrain, FaLungs, FaHeart, FaImage, FaSpinner, FaCheck } from 'react-icons/fa';
 import styled from 'styled-components';
+import { supabase } from '@/lib/supabase';
 
 interface ScanCreationModalProps {
   isOpen: boolean;
@@ -14,11 +15,28 @@ interface ScanFormData {
   patientFirstName: string;
   patientLastName: string;
   patientIdNumber: string;
+  patientEmail: string;
+  patientPhone: string;
+  patientDateOfBirth: string;
+  patientGender: string;
   scanType: string;
   bodyPart: string;
   priority: string;
-  selectedFile: File | null;
+  scanDate: string;
+  selectedFile: File | null; // first file for preview/label
   selectedAIServices: string[];
+  createNewPatient: boolean;
+  selectedPatientId: string;
+}
+
+interface Patient {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  dateOfBirth: string;
+  gender: string;
 }
 
 // Styled Components
@@ -131,39 +149,73 @@ const Label = styled.label`
 `;
 
 const Input = styled.input`
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  padding: 12px;
-  color: white;
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #ffffff;
   font-size: 14px;
-  
+  font-family: var(--font-primary);
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+
   &::placeholder {
-    color: #888;
+    color: #9c9c9c;
   }
-  
+
   &:focus {
     outline: none;
     border-color: #0694fb;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 3px rgba(6, 148, 251, 0.15);
+  }
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.2);
   }
 `;
 
 const Select = styled.select`
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  padding: 12px;
-  color: white;
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #ffffff;
   font-size: 14px;
-  
+  font-family: var(--font-primary);
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239c9c9c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 40px;
+
+  &::placeholder {
+    color: #9c9c9c;
+  }
+
   &:focus {
     outline: none;
     border-color: #0694fb;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 3px rgba(6, 148, 251, 0.15);
   }
-  
-  option {
-    background: #1a1a1a;
-    color: white;
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  & option {
+    background: #1a1a3a;
+    color: #ffffff;
+    padding: 8px;
   }
 `;
 
@@ -298,6 +350,86 @@ const LoadingOverlay = styled.div`
   border-radius: 12px;
 `;
 
+const PatientSection = styled.div`
+  margin-bottom: 24px;
+`;
+
+const PatientToggle = styled.div`
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+`;
+
+const ToggleButton = styled.button<{ active: boolean }>`
+  background: ${props => props.active ? '#0694fb' : 'rgba(255, 255, 255, 0.1)'};
+  border: 1px solid ${props => props.active ? '#0694fb' : 'rgba(255, 255, 255, 0.2)'};
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${props => props.active ? '#0694fb' : 'rgba(255, 255, 255, 0.2)'};
+  }
+`;
+
+const PatientSearchInput = styled.input`
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 10px 16px;
+  color: white;
+  font-size: 14px;
+  width: 100%;
+  margin-bottom: 12px;
+  
+  &::placeholder {
+    color: #888;
+  }
+  
+  &:focus {
+    outline: none;
+    border-color: #0694fb;
+  }
+`;
+
+const PatientList = styled.div`
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  margin-bottom: 16px;
+`;
+
+const PatientItem = styled.div<{ selected: boolean }>`
+  padding: 12px 16px;
+  cursor: pointer;
+  background: ${props => props.selected ? 'rgba(6, 148, 251, 0.2)' : 'transparent'};
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: rgba(6, 148, 251, 0.1);
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+`;
+
+const PatientName = styled.div`
+  color: white;
+  font-weight: 500;
+  margin-bottom: 4px;
+`;
+
+const PatientDetails = styled.div`
+  color: #ccc;
+  font-size: 12px;
+`;
+
 const LoadingText = styled.p`
   margin: 16px 0 0 0;
   font-size: 16px;
@@ -351,15 +483,68 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
     patientFirstName: '',
     patientLastName: '',
     patientIdNumber: '',
+    patientEmail: '',
+    patientPhone: '',
+    patientDateOfBirth: '',
+    patientGender: '',
     scanType: '',
     bodyPart: '',
-    priority: 'normal',
+    priority: 'medium',
+    scanDate: new Date().toISOString().split('T')[0],
     selectedFile: null,
-    selectedAIServices: []
+    selectedAIServices: [],
+    createNewPatient: false,
+    selectedPatientId: ''
   });
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loadingPatients, setLoadingPatients] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const selectedFilesRef = useRef<File[]>([]);
+
+  // Load patients when modal opens
+  useEffect(() => {
+    if (isOpen && !formData.createNewPatient) {
+      loadPatients();
+    }
+  }, [isOpen, formData.createNewPatient]);
+
+  const loadPatients = async () => {
+    try {
+      setLoadingPatients(true);
+      // Use Supabase session token for auth
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`/api/patients?limit=1000&page=1`, {
+        headers
+      });
+      const result = await response.json();
+      
+      if (result.status === 'success') {
+        setPatients(result.data.patients || []);
+      } else {
+        setPatients([]);
+      }
+    } catch (error) {
+      console.error('Error loading patients:', error);
+      setPatients([]);
+    } finally {
+      setLoadingPatients(false);
+    }
+  };
+
+  const filteredPatients = patients.filter(patient =>
+    patient.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    patient.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    patient.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleInputChange = (field: keyof ScanFormData, value: string) => {
     setFormData(prev => ({
@@ -369,21 +554,34 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
+    const files = Array.from(event.target.files || []);
+    if (files.length > 0) {
+      const file = files[0];
       // Validate file type
-      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/tiff'];
-      if (!validTypes.includes(file.type)) {
-        alert('Please select a valid image file (JPEG, PNG, GIF, BMP, TIFF)');
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/tiff', 'application/dicom'];
+      const validExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.dcm', '.dicom'];
+      const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+      
+      if (!validTypes.includes(file.type) && !validExtensions.includes(fileExtension)) {
+        alert('Please select a valid file (JPEG, PNG, GIF, BMP, TIFF, DICOM)');
         return;
       }
 
-      // Validate file size (10MB limit)
-      if (file.size > 10 * 1024 * 1024) {
-        alert('File size too large. Please select an image smaller than 10MB.');
+      // Validate file size based on file type
+      const isDicomFile = file.type === 'application/dicom' || 
+                          fileExtension === '.dcm' || 
+                          fileExtension === '.dicom';
+      
+      const maxSize = isDicomFile ? 100 * 1024 * 1024 : 10 * 1024 * 1024; // 100MB for DICOM, 10MB for images
+      const maxSizeText = isDicomFile ? '100MB' : '10MB';
+      
+      if (file.size > maxSize) {
+        alert(`File size too large. Please select a file smaller than ${maxSizeText}.`);
         return;
       }
 
+      // Save first file for preview/label and keep all in ref
+      selectedFilesRef.current = files;
       setFormData(prev => ({
         ...prev,
         selectedFile: file
@@ -400,6 +598,30 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
     }));
   };
 
+  const handlePatientToggle = (createNew: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      createNewPatient: createNew,
+      selectedPatientId: createNew ? '' : prev.selectedPatientId
+    }));
+    if (!createNew) {
+      loadPatients();
+    }
+  };
+
+  const handlePatientSelect = (patient: Patient) => {
+    setFormData(prev => ({
+      ...prev,
+      selectedPatientId: patient.id,
+      patientFirstName: patient.firstName,
+      patientLastName: patient.lastName,
+      patientEmail: patient.email,
+      patientPhone: patient.phone,
+      patientDateOfBirth: patient.dateOfBirth,
+      patientGender: patient.gender
+    }));
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     
@@ -413,10 +635,75 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
       return;
     }
 
+    if (!formData.patientFirstName || !formData.patientLastName) {
+      alert('Please provide patient first and last name');
+      return;
+    }
+
     setIsUploading(true);
     setUploadProgress(0);
 
     try {
+      // Get authentication token from Supabase session
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      console.log('Using token for scan creation:', token.substring(0, 20) + '...');
+
+      let patientId = formData.selectedPatientId;
+
+      // Create new patient if needed
+      if (formData.createNewPatient || !patientId) {
+        const patientData = {
+          firstName: formData.patientFirstName,
+          lastName: formData.patientLastName,
+          dateOfBirth: formData.patientDateOfBirth || '1990-01-01',
+          gender: formData.patientGender || 'other',
+          contactNumber: formData.patientPhone || '',
+          email: formData.patientEmail || '',
+          street: '',
+          city: '',
+          state: '',
+          zipCode: '',
+          country: '',
+          assignedDoctorId: null
+        };
+
+        const patientResponse = await fetch('/api/patients', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(patientData)
+        });
+
+        const patientResult = await patientResponse.json();
+        if (patientResult.status === 'success') {
+          patientId = patientResult.data.patient.id;
+        } else {
+          throw new Error(patientResult.message || 'Failed to create patient');
+        }
+      }
+
+      // Create FormData for file upload
+      const uploadFormData = new FormData();
+      // Append all selected images (first is used as thumbnail on server)
+      const filesToUpload = selectedFilesRef.current.length > 0 ? selectedFilesRef.current : [formData.selectedFile];
+      filesToUpload.forEach(f => uploadFormData.append('scanImages', f));
+      // keep legacy single key for compatibility
+      uploadFormData.append('scanImage', formData.selectedFile);
+      uploadFormData.append('patientId', patientId); // Fixed: use patientId instead of patientIdNumber
+      uploadFormData.append('scanType', formData.scanType);
+      uploadFormData.append('bodyPart', formData.bodyPart);
+      uploadFormData.append('priority', formData.priority);
+      uploadFormData.append('analysisType', formData.selectedAIServices.join(','));
+      uploadFormData.append('scanDate', formData.scanDate);
+
       // Simulate upload progress
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
@@ -428,48 +715,68 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
         });
       }, 200);
 
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Call real API to create scan
+      const response = await fetch('/api/scans', {
+        method: 'POST',
+        body: uploadFormData,
+        headers: {
+          'Authorization': `Bearer ${token}`
+          // Note: Don't set Content-Type header when using FormData - let the browser set it automatically
+        }
+      });
+
+      const result = await response.json();
 
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      // Create scan object
-      const newScan = {
-        id: Date.now(),
-        scanId: `SCAN-${Date.now()}`,
-        patientFirstName: formData.patientFirstName,
-        patientLastName: formData.patientLastName,
-        patientIdNumber: formData.patientIdNumber,
-        scanType: formData.scanType,
-        bodyPart: formData.bodyPart,
-        priority: formData.priority,
-        status: 'pending',
-        scanDate: new Date().toISOString().split('T')[0],
-        createdAt: new Date().toISOString(),
-        imagePath: URL.createObjectURL(formData.selectedFile),
-        selectedAIServices: formData.selectedAIServices
-      };
+      if (result.status === 'success') {
+        // Create scan object with real data
+        const newScan = {
+          id: result.data.scan.id,
+          scanId: result.data.scan.scanId,
+          patientFirstName: formData.patientFirstName,
+          patientLastName: formData.patientLastName,
+          patientIdNumber: patientId,
+          scanType: formData.scanType,
+          bodyPart: formData.bodyPart,
+          priority: formData.priority,
+          status: 'pending',
+          scanDate: formData.scanDate,
+          createdAt: new Date().toISOString(),
+          imagePath: result.data.imagePath,
+          selectedAIServices: formData.selectedAIServices
+        };
 
-      onScanCreated(newScan);
-      onClose();
+        onScanCreated(newScan);
+        onClose();
 
-      // Reset form
-      setFormData({
-        patientFirstName: '',
-        patientLastName: '',
-        patientIdNumber: '',
-        scanType: '',
-        bodyPart: '',
-        priority: 'normal',
-        selectedFile: null,
-        selectedAIServices: []
-      });
-      setUploadProgress(0);
+        // Reset form
+        setFormData({
+          patientFirstName: '',
+          patientLastName: '',
+          patientIdNumber: '',
+          patientEmail: '',
+          patientPhone: '',
+          patientDateOfBirth: '',
+          patientGender: '',
+          scanType: '',
+          bodyPart: '',
+          priority: 'medium',
+          scanDate: new Date().toISOString().split('T')[0],
+          selectedFile: null,
+          selectedAIServices: [],
+          createNewPatient: false,
+          selectedPatientId: ''
+        });
+        setUploadProgress(0);
+      } else {
+        throw new Error(result.message || 'Failed to create scan');
+      }
 
     } catch (error) {
       console.error('Error creating scan:', error);
-      alert('Failed to create scan. Please try again.');
+      alert(`Failed to create scan: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsUploading(false);
     }
@@ -491,7 +798,7 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
         {isUploading && (
           <LoadingOverlay>
             <FaSpinner className="fa-spin" style={{ fontSize: '32px' }} />
-            <LoadingText>Creating scan and starting AI analysis... {uploadProgress}%</LoadingText>
+            <LoadingText>Uploading images and saving scan... {uploadProgress}%</LoadingText>
           </LoadingOverlay>
         )}
 
@@ -501,45 +808,141 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
         </ModalTitle>
 
         <form onSubmit={handleSubmit}>
+          {/* Patient Selection Section */}
+          <PatientSection>
+            <SectionTitle>Patient Information</SectionTitle>
+            <PatientToggle>
+              <ToggleButton
+                type="button"
+                active={formData.createNewPatient}
+                onClick={() => handlePatientToggle(true)}
+                disabled={isUploading}
+              >
+                Create New Patient
+              </ToggleButton>
+              <ToggleButton
+                type="button"
+                active={!formData.createNewPatient}
+                onClick={() => handlePatientToggle(false)}
+                disabled={isUploading}
+              >
+                Select Existing Patient
+              </ToggleButton>
+            </PatientToggle>
+
+            {formData.createNewPatient ? (
+              <FormGrid>
+                <FormGroup>
+                  <Label>Patient First Name *</Label>
+                  <Input
+                    type="text"
+                    value={formData.patientFirstName}
+                    onChange={(e) => handleInputChange('patientFirstName', e.target.value)}
+                    placeholder="Enter first name"
+                    required
+                    disabled={isUploading}
+                  />
+                </FormGroup>
+
+                <FormGroup>
+                  <Label>Patient Last Name *</Label>
+                  <Input
+                    type="text"
+                    value={formData.patientLastName}
+                    onChange={(e) => handleInputChange('patientLastName', e.target.value)}
+                    placeholder="Enter last name"
+                    required
+                    disabled={isUploading}
+                  />
+                </FormGroup>
+
+                <FormGroup>
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={formData.patientEmail}
+                    onChange={(e) => handleInputChange('patientEmail', e.target.value)}
+                    placeholder="Enter email"
+                    disabled={isUploading}
+                  />
+                </FormGroup>
+
+                <FormGroup>
+                  <Label>Phone</Label>
+                  <Input
+                    type="tel"
+                    value={formData.patientPhone}
+                    onChange={(e) => handleInputChange('patientPhone', e.target.value)}
+                    placeholder="Enter phone number"
+                    disabled={isUploading}
+                  />
+                </FormGroup>
+
+                <FormGroup>
+                  <Label>Date of Birth</Label>
+                  <Input
+                    type="date"
+                    value={formData.patientDateOfBirth}
+                    onChange={(e) => handleInputChange('patientDateOfBirth', e.target.value)}
+                    disabled={isUploading}
+                  />
+                </FormGroup>
+
+                <FormGroup>
+                  <Label>Gender</Label>
+                  <Select
+                    value={formData.patientGender}
+                    onChange={(e) => handleInputChange('patientGender', e.target.value)}
+                    disabled={isUploading}
+                  >
+                    <option value="">Select gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </Select>
+                </FormGroup>
+              </FormGrid>
+            ) : (
+              <div>
+                {loadingPatients ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: '#0694fb' }}>
+                    <FaSpinner className="fa-spin" style={{ marginRight: '8px' }} />
+                    Loading patients...
+                  </div>
+                ) : (
+                  <FormGroup>
+                    <Label>Select Patient *</Label>
+                    <Select
+                      value={formData.selectedPatientId}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        const selected = patients.find(p => p.id === selectedId);
+                        if (selected) {
+                          handlePatientSelect(selected);
+                        } else {
+                          handleInputChange('selectedPatientId', selectedId);
+                        }
+                      }}
+                      required
+                      disabled={isUploading}
+                    >
+                      <option value="">Select a patient...</option>
+                      {patients.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.firstName} {p.lastName} — {p.email}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormGroup>
+                )}
+              </div>
+            )}
+          </PatientSection>
+
+          {/* Scan Information Section */}
           <FormGrid>
             <FormGroup>
-              <Label>Patient First Name</Label>
-              <Input
-                type="text"
-                value={formData.patientFirstName}
-                onChange={(e) => handleInputChange('patientFirstName', e.target.value)}
-                placeholder="Enter first name"
-                required
-                disabled={isUploading}
-              />
-            </FormGroup>
-
-            <FormGroup>
-              <Label>Patient Last Name</Label>
-              <Input
-                type="text"
-                value={formData.patientLastName}
-                onChange={(e) => handleInputChange('patientLastName', e.target.value)}
-                placeholder="Enter last name"
-                required
-                disabled={isUploading}
-              />
-            </FormGroup>
-
-            <FormGroup>
-              <Label>Patient ID Number</Label>
-              <Input
-                type="text"
-                value={formData.patientIdNumber}
-                onChange={(e) => handleInputChange('patientIdNumber', e.target.value)}
-                placeholder="Enter patient ID"
-                required
-                disabled={isUploading}
-              />
-            </FormGroup>
-
-            <FormGroup>
-              <Label>Scan Type</Label>
+              <Label>Scan Type *</Label>
               <Select
                 value={formData.scanType}
                 onChange={(e) => handleInputChange('scanType', e.target.value)}
@@ -556,7 +959,7 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
             </FormGroup>
 
             <FormGroup>
-              <Label>Body Part</Label>
+              <Label>Body Part *</Label>
               <Input
                 type="text"
                 value={formData.bodyPart}
@@ -574,10 +977,21 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
                 onChange={(e) => handleInputChange('priority', e.target.value)}
                 disabled={isUploading}
               >
-                <option value="normal">Normal</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
                 <option value="urgent">Urgent</option>
-                <option value="critical">Critical</option>
               </Select>
+            </FormGroup>
+
+            <FormGroup>
+              <Label>Scan Date</Label>
+              <Input
+                type="date"
+                value={formData.scanDate}
+                onChange={(e) => handleInputChange('scanDate', e.target.value)}
+                disabled={isUploading}
+              />
             </FormGroup>
           </FormGrid>
 
@@ -589,17 +1003,20 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
               <FaUpload />
             </UploadIcon>
             <UploadText>
-              {formData.selectedFile ? formData.selectedFile.name : 'Click to upload scan image'}
+              {formData.selectedFile
+                ? `${formData.selectedFile.name}${selectedFilesRef.current.length > 1 ? ` (+${selectedFilesRef.current.length - 1} more)` : ''}`
+                : 'Click to upload scan files (you can select multiple)'}
             </UploadText>
             <UploadSubtext>
-              Supported formats: JPEG, PNG, GIF, BMP, TIFF (Max 10MB)
+              Supported formats: JPEG, PNG, GIF, BMP, TIFF (Max 10MB), DICOM (Max 100MB)
             </UploadSubtext>
           </FileUploadArea>
 
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,.dcm,.dicom"
+            multiple
             onChange={handleFileSelect}
             style={{ display: 'none' }}
             disabled={isUploading}

@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const fetchCache = 'force-no-store';
+// Address helpers removed: now using dedicated columns
+
 
 // Helper function to verify Supabase session
 const verifyToken = async (request: NextRequest) => {
@@ -66,11 +68,11 @@ export async function GET(request: NextRequest) {
             gender: patient.gender,
             contactNumber: patient.phone,
             email: patient.email,
-            street: patient.address,
-            city: '',
-            state: '',
-            zipCode: '',
-            country: '',
+            street: (patient as any).street || patient.address || '',
+            city: (patient as any).city || '',
+            state: (patient as any).state || '',
+            zipCode: (patient as any).zip_code || '',
+            country: (patient as any).country || '',
             assignedDoctorId: null,
             isActive: true,
             createdAt: patient.created_at,
@@ -145,6 +147,11 @@ export async function POST(request: NextRequest) {
             phone: contactNumber || '',
             email: email || '',
             address: street || '',
+            street: street || '',
+            city: city || '',
+            state: state || '',
+            zip_code: zipCode || '',
+            country: country || '',
             medical_history: ''
         });
 
@@ -160,11 +167,11 @@ export async function POST(request: NextRequest) {
                     gender: patient.gender,
                     contactNumber: patient.phone,
                     email: patient.email,
-                    street: patient.address,
-                    city: '',
-                    state: '',
-                    zipCode: '',
-                    country: '',
+                    street: (patient as any).street || patient.address || '',
+                    city: (patient as any).city || '',
+                    state: (patient as any).state || '',
+                    zipCode: (patient as any).zip_code || '',
+                    country: (patient as any).country || '',
                     assignedDoctorId: null,
                     isActive: true,
                     createdAt: patient.created_at,

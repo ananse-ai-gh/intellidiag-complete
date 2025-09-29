@@ -9,7 +9,7 @@ export const fetchCache = 'force-no-store';
 export async function GET(request: NextRequest) {
   try {
     // Verify authentication
-    const user = verifyToken(request);
+    const user = await verifyToken(request);
     if (!user) {
       return NextResponse.json(
         { status: 'error', message: 'Authentication required' },
