@@ -3,6 +3,8 @@ import { createServerSupabaseClient } from '@/lib/supabase';
 import { db } from '@/lib/database';
 import * as dicomParser from 'dicom-parser';
 
+export const dynamic = 'force-dynamic';
+
 const STORAGE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_DICOM_BUCKET || 'dicom-images';
 
 // DICOM Server API Routes

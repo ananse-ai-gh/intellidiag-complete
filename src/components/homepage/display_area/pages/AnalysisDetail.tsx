@@ -50,6 +50,7 @@ const MainViewerArea = styled.div`
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0; /* Prevent flex item from growing beyond container */
 `
 
 // Thumbnails at the top
@@ -69,14 +70,23 @@ const ViewerArea = styled.div`
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-width: 0; /* Prevent flex item from growing beyond container */
 `
 
-// Image viewer container
+// Image viewer container (fixed width to prevent growth when panels toggle)
 const ImageViewerArea = styled.div`
-  flex: 1;
+  flex: 0 0 960px; /* fixed width */
+  width: 960px; /* fixed width */
+  max-width: 100%; /* allow shrink on small screens */
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0; /* Prevent flex item from growing beyond container */
+
+  @media (max-width: 1100px) {
+    flex: 1 1 auto; /* fall back to fluid on small screens */
+    width: 100%;
+  }
 `
 
 const SidebarHeader = styled.div`
@@ -461,12 +471,12 @@ const ResultsText = styled.div`
 
 // New styled components for professional left panel
 const CollapsibleToolsSidebar = styled.div<{ $collapsed: boolean }>`
-  width: ${props => props.$collapsed ? '60px' : '280px'};
+  width: 280px; /* fixed width so viewer origin stays stable */
   background: #1a1a1a;
   border-right: 1px solid #2a2a2a;
   display: flex;
   flex-direction: column;
-  transition: width 0.3s ease;
+  /* no width transition to avoid shifting the viewer */
   overflow: hidden;
 `
 
@@ -797,6 +807,20 @@ const AnalysisDetail: React.FC = () => {
       return () => clearTimeout(timer)
     }
   }, [selected, imageAnnotations, files, updateImageDimensions])
+
+  // Recalculate image dimensions when viewer container resizes (e.g., panels collapse)
+  // (moved below after viewerContainer declaration to satisfy linter)
+  
+  // Sync live arrays when switching images if annotations exist
+  React.useEffect(() => {
+    const cur = imageAnnotations[selected]
+    if (cur) {
+      setDrawingShapes(cur.shapes || [])
+      setTextAnnotations(cur.textAnnotations || [])
+      setMeasurementLines(cur.measurements || [])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected])
   
   // Unified Tool System State
   const [toolState, setToolState] = useState({
@@ -812,42 +836,144 @@ const AnalysisDetail: React.FC = () => {
   // Auto-save annotations debounce timer
   const saveTimer = React.useRef<NodeJS.Timeout | null>(null)
 
-  // Debounced save function
-  const debouncedSaveAnnotations = React.useCallback(async (imageIndex: number, annotationData: any) => {
+  // Robust save queue with retry and offline fallback
+  type PendingSave = { scanId: string; imageIndex: number; annotations: any; attempts: number }
+  const saveQueueRef = React.useRef<PendingSave[]>([])
+  const isProcessingQueueRef = React.useRef<boolean>(false)
+
+  const persistQueue = React.useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('annotationSaveQueue', JSON.stringify(saveQueueRef.current))
+      }
+    } catch (e) {
+      console.warn('Could not persist save queue', e)
+    }
+  }, [])
+
+  const loadQueue = React.useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = window.localStorage.getItem('annotationSaveQueue')
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed)) {
+            saveQueueRef.current = parsed
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not load save queue', e)
+    }
+  }, [])
+
+  const processQueue = React.useCallback(async () => {
+    if (isProcessingQueueRef.current) {
+      console.log('⏳ Queue processing already in progress, skipping')
+      return
+    }
+    isProcessingQueueRef.current = true
+    console.log(`🔄 Starting queue processing with ${saveQueueRef.current.length} items`)
+    try {
+      while (saveQueueRef.current.length > 0) {
+        const item = saveQueueRef.current[0]
+        const maxAttempts = 5
+        const attempt = item.attempts ?? 0
+        try {
+          console.log(`🔄 Processing save for scan ${item.scanId}, image ${item.imageIndex}`)
+          await scansAPI.saveAnnotations(item.scanId, item.imageIndex, item.annotations)
+          console.log(`✅ Successfully saved annotations for scan ${item.scanId}, image ${item.imageIndex}`)
+          saveQueueRef.current.shift()
+          persistQueue()
+        } catch (err) {
+          console.error(`❌ Failed to save annotations for scan ${item.scanId}, image ${item.imageIndex}:`, err)
+          const nextAttempts = attempt + 1
+          if (nextAttempts >= maxAttempts) {
+            console.error('Dropping save after max retries', err)
+            saveQueueRef.current.shift()
+            persistQueue()
+          } else {
+            // Exponential backoff with jitter
+            item.attempts = nextAttempts
+            const backoffMs = Math.min(30000, Math.pow(2, nextAttempts) * 500) + Math.floor(Math.random() * 250)
+            persistQueue()
+            await new Promise(res => setTimeout(res, backoffMs))
+          }
+        }
+      }
+    } finally {
+      isProcessingQueueRef.current = false
+      console.log(`✅ Queue processing completed. Remaining items: ${saveQueueRef.current.length}`)
+    }
+  }, [persistQueue])
+
+  const enqueueSave = React.useCallback((scanId: string, imageIndex: number, annotations: any) => {
+    console.log(`📝 Enqueuing save for scan ${scanId}, image ${imageIndex} with ${annotations.shapes?.length || 0} shapes, ${annotations.textAnnotations?.length || 0} texts, ${annotations.measurements?.length || 0} measurements`)
+    // Coalesce: if last in queue is same imageIndex, replace it
+    const q = saveQueueRef.current
+    const last = q[q.length - 1]
+    if (last && last.scanId === scanId && last.imageIndex === imageIndex) {
+      last.annotations = annotations
+      last.attempts = 0
+      console.log(`🔄 Updated existing queue item for scan ${scanId}, image ${imageIndex}`)
+    } else {
+      q.push({ scanId, imageIndex, annotations, attempts: 0 })
+      console.log(`➕ Added new queue item for scan ${scanId}, image ${imageIndex}. Queue length: ${q.length}`)
+    }
+    persistQueue()
+    // Trigger processing soon
+    setTimeout(() => {
+      processQueue()
+    }, 0)
+  }, [persistQueue, processQueue])
+
+  // Debounced save enqueues into the robust queue
+  const debouncedSaveAnnotations = React.useCallback((imageIndex: number, annotationData: any) => {
     if (saveTimer.current) {
       clearTimeout(saveTimer.current)
     }
-    
-    saveTimer.current = setTimeout(async () => {
+    saveTimer.current = setTimeout(() => {
       if (analysisId) {
-        try {
-          await scansAPI.saveAnnotations(analysisId, imageIndex, annotationData)
-          console.log(`💾 Auto-saved annotations for image ${imageIndex}`)
-        } catch (error) {
-          console.error('Failed to auto-save annotations:', error)
-        }
+        enqueueSave(analysisId, imageIndex, annotationData)
+        console.log(`💾 Queued auto-save for image ${imageIndex}`)
       }
-    }, 2000) // Save after 2 seconds of inactivity
-  }, [analysisId])
+    }, 2000)
+  }, [analysisId, enqueueSave])
 
+  // Load pending queue on mount and flush when back online
+  useEffect(() => {
+    loadQueue()
+    const handleOnline = () => processQueue()
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline)
+    }
+    // Kick off processing at start
+    processQueue()
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline)
+      }
+    }
+  }, [loadQueue, processQueue])
+  
   // Setter functions for current image annotation updates
   const setDrawingShapes = (update: any) => {
     setImageAnnotations(prev => {
       const newAnnotations = {
-        ...prev,
-        [selected]: {
-          ...prev[selected],
-          shapes: typeof update === 'function' ? update(prev[selected]?.shapes || []) : update
-        }
+      ...prev,
+      [selected]: {
+        ...prev[selected],
+        shapes: typeof update === 'function' ? update(prev[selected]?.shapes || []) : update
+      }
       }
       
       // Auto-save after update
       const currentAnnotations = newAnnotations[selected]
       if (currentAnnotations && analysisId) {
         debouncedSaveAnnotations(selected, {
-          shapes: currentAnnotations.shapes,
-          textAnnotations: currentAnnotations.textAnnotations,
-          measurements: currentAnnotations.measurements
+          shapes: currentAnnotations.shapes || [],
+          textAnnotations: currentAnnotations.textAnnotations || [],
+          measurements: currentAnnotations.measurements || []
         })
       }
       
@@ -858,20 +984,20 @@ const AnalysisDetail: React.FC = () => {
   const setTextAnnotations = (update: any) => {
     setImageAnnotations(prev => {
       const newAnnotations = {
-        ...prev,
-        [selected]: {
-          ...prev[selected],
-          textAnnotations: typeof update === 'function' ? update(prev[selected]?.textAnnotations || []) : update
-        }
+      ...prev,
+      [selected]: {
+        ...prev[selected],
+        textAnnotations: typeof update === 'function' ? update(prev[selected]?.textAnnotations || []) : update
+      }
       }
       
       // Auto-save after update
       const currentAnnotations = newAnnotations[selected]
       if (currentAnnotations && analysisId) {
         debouncedSaveAnnotations(selected, {
-          shapes: currentAnnotations.shapes,
-          textAnnotations: currentAnnotations.textAnnotations,
-          measurements: currentAnnotations.measurements
+          shapes: currentAnnotations.shapes || [],
+          textAnnotations: currentAnnotations.textAnnotations || [],
+          measurements: currentAnnotations.measurements || []
         })
       }
       
@@ -882,20 +1008,20 @@ const AnalysisDetail: React.FC = () => {
   const setMeasurementLines = (update: any) => {
     setImageAnnotations(prev => {
       const newAnnotations = {
-        ...prev,
-        [selected]: {
-          ...prev[selected],
-          measurements: typeof update === 'function' ? update(prev[selected]?.measurements || []) : update
-        }
+      ...prev,
+      [selected]: {
+        ...prev[selected],
+        measurements: typeof update === 'function' ? update(prev[selected]?.measurements || []) : update
+      }
       }
       
       // Auto-save after update
       const currentAnnotations = newAnnotations[selected]
       if (currentAnnotations && analysisId) {
         debouncedSaveAnnotations(selected, {
-          shapes: currentAnnotations.shapes,
-          textAnnotations: currentAnnotations.textAnnotations,
-          measurements: currentAnnotations.measurements
+          shapes: currentAnnotations.shapes || [],
+          textAnnotations: currentAnnotations.textAnnotations || [],
+          measurements: currentAnnotations.measurements || []
         })
       }
       
@@ -928,6 +1054,7 @@ const AnalysisDetail: React.FC = () => {
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const imageRef = useRef<HTMLImageElement>(null)
+  
   
   // Modal State
   const [showTextModal, setShowTextModal] = useState(false)
@@ -1067,6 +1194,15 @@ const AnalysisDetail: React.FC = () => {
           })
           
           setImageAnnotations(loadedImageAnnotations)
+          // Hydrate current view from loaded annotations for the selected image
+          try {
+            const cur = loadedImageAnnotations[selected]
+            if (cur) {
+              setDrawingShapes(cur.shapes || [])
+              setTextAnnotations(cur.textAnnotations || [])
+              setMeasurementLines(cur.measurements || [])
+            }
+          } catch (_) {}
           console.log('✅ Successfully loaded annotations for', Object.keys(loadedImageAnnotations).length, 'images')
         } catch (error) {
           console.warn('⚠️ Could not load annotations:', error)
@@ -1294,15 +1430,41 @@ const AnalysisDetail: React.FC = () => {
     }
   }
 
-  const saveToHistory = () => {
+  // Helpers to project shapes from image-space to screen-space for rendering
+  const projectPoint = (p: any) => imageToScreenCoords(p.x ?? p.X ?? 0, p.y ?? p.Y ?? 0)
+  const projectRect = (topLeft: any, bottomRight: any) => {
+    const tl = projectPoint(topLeft)
+    const br = projectPoint(bottomRight)
+    return { left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y }
+  }
+
+  const HISTORY_LIMIT = 200
+  const statesEqual = (a: any, b: any) => {
+    try {
+      return JSON.stringify(a) === JSON.stringify(b)
+    } catch {
+      return false
+    }
+  }
+  const saveToHistory = React.useCallback(() => {
     const newState = {
       shapes: [...drawingShapes],
       textAnnotations: [...textAnnotations],
       measurements: [...measurementLines]
     }
-    setHistory((prev: any[]) => [...prev.slice(0, historyIndex + 1), newState])
-    setHistoryIndex((prev: number) => prev + 1)
-  }
+    setHistory((prev: any[]) => {
+      const truncated = prev.slice(0, historyIndex + 1)
+      const last = truncated[truncated.length - 1]
+      if (last && statesEqual(last, newState)) return truncated
+      const next = [...truncated, newState]
+      // Cap size
+      if (next.length > HISTORY_LIMIT) {
+        next.shift()
+      }
+      return next
+    })
+    setHistoryIndex((prev: number) => Math.min(prev + 1, HISTORY_LIMIT - 1))
+  }, [drawingShapes, textAnnotations, measurementLines, historyIndex, setHistory, setHistoryIndex])
 
   // Initialize history with current state
   useEffect(() => {
@@ -1317,25 +1479,29 @@ const AnalysisDetail: React.FC = () => {
     }
   }, [])
 
-  const undo = () => {
+  const undo = React.useCallback(() => {
     if (historyIndex > 0) {
       const prevState = history[historyIndex - 1]
       setDrawingShapes(prevState.shapes)
       setTextAnnotations(prevState.textAnnotations)
       setMeasurementLines(prevState.measurements)
       setHistoryIndex((prev: number) => prev - 1)
+      // Persist after undo
+      debouncedSaveAnnotations(selected, prevState)
     }
-  }
+  }, [historyIndex, history, setDrawingShapes, setTextAnnotations, setMeasurementLines, setHistoryIndex, debouncedSaveAnnotations, selected])
 
-  const redo = () => {
+  const redo = React.useCallback(() => {
     if (historyIndex < history.length - 1) {
       const nextState = history[historyIndex + 1]
       setDrawingShapes(nextState.shapes)
       setTextAnnotations(nextState.textAnnotations)
       setMeasurementLines(nextState.measurements)
       setHistoryIndex((prev: number) => prev + 1)
+      // Persist after redo
+      debouncedSaveAnnotations(selected, nextState)
     }
-  }
+  }, [historyIndex, history, setDrawingShapes, setTextAnnotations, setMeasurementLines, setHistoryIndex, debouncedSaveAnnotations, selected])
 
   // Unified Tool System - Mouse Down Handler
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -1348,7 +1514,8 @@ const AnalysisDetail: React.FC = () => {
     e.preventDefault()
     e.stopPropagation()
     
-    const pos = getMousePos(e)
+    const posScreen = getMousePos(e)
+    const pos = screenToImageCoords(posScreen.x, posScreen.y)
     const color = labels.find(l => l.id === activeLabel)?.color || '#ff0000'
 
     // Update tool state
@@ -1369,7 +1536,7 @@ const AnalysisDetail: React.FC = () => {
         
         // Apply brush effect
         const brushColor = labels.find(l => l.id === activeLabel)?.color || '#ff0000'
-        applyBrushEffect(pos.x, pos.y, brushSize, brushColor, overlayOpacity / 100)
+        applyBrushEffect(posScreen.x, posScreen.y, brushSize, brushColor, overlayOpacity / 100)
         break
 
 
@@ -1378,6 +1545,7 @@ const AnalysisDetail: React.FC = () => {
       case 'polygon':
       case 'lasso':
       case 'length':
+      case 'ellipseStats':
         setToolState(prev => ({
           ...prev,
           currentShape: {
@@ -1497,20 +1665,6 @@ const AnalysisDetail: React.FC = () => {
         applyInterpolateEffect(pos.x, pos.y, interpolateRadius)
         break
 
-        case 'ellipseStats':
-          // Ellipse statistics - start drawing ellipse
-          console.log('Ellipse Stats tool selected, starting to draw at:', pos)
-          setToolState(prev => ({
-            ...prev,
-            isDrawing: true,
-            currentShape: {
-              type: 'ellipse',
-              start: pos,
-              end: pos,
-              color: '#00ffff'
-            }
-          }))
-          break
 
       case 'probe':
         // Probe tool - click to get pixel value
@@ -1525,7 +1679,6 @@ const AnalysisDetail: React.FC = () => {
           color: '#ff00ff',
           timestamp: new Date().toISOString()
         }
-        setMeasurementResults(prev => [...prev, newProbe])
         saveToHistory()
         break
 
@@ -1542,7 +1695,6 @@ const AnalysisDetail: React.FC = () => {
           color: '#8800ff',
           timestamp: new Date().toISOString()
         }
-        setMeasurementResults(prev => [...prev, newVolume])
         saveToHistory()
         break
 
@@ -1563,7 +1715,8 @@ const AnalysisDetail: React.FC = () => {
     e.preventDefault()
     e.stopPropagation()
     
-    const pos = getMousePos(e)
+    const posScreen = getMousePos(e)
+    const pos = screenToImageCoords(posScreen.x, posScreen.y)
 
     // Update last point
     setToolState(prev => ({
@@ -1587,6 +1740,7 @@ const AnalysisDetail: React.FC = () => {
         case 'ellipse':
         case 'length':
         case 'arrow':
+        case 'ellipseStats':
           setToolState(prev => ({
             ...prev,
             currentShape: {
@@ -1596,17 +1750,6 @@ const AnalysisDetail: React.FC = () => {
           }))
           break
 
-        case 'ellipseStats':
-          // Ellipse statistics tool - update ellipse shape during drawing
-          console.log('Ellipse Stats tool, updating ellipse during drag:', pos)
-          setToolState(prev => ({
-            ...prev,
-            currentShape: {
-              ...prev.currentShape,
-              end: pos
-            }
-          }))
-          break
 
         case 'polygon':
         case 'lasso':
@@ -1788,48 +1931,10 @@ const AnalysisDetail: React.FC = () => {
           const isValid = validateROI(newShape)
           console.log('Ellipse ROI validation result:', isValid)
           if (isValid) {
-            // Check if this ellipse was drawn with the ellipseStats tool
-            if (activeTool === 'ellipse') {
-              console.log('Processing ellipseStats tool in mouse up')
-                // Calculate ellipse statistics
-                const centerX = (newShape.start.x + newShape.end.x) / 2
-                const centerY = (newShape.start.y + newShape.end.y) / 2
-                const radiusX = Math.abs(newShape.end.x - newShape.start.x) / 2
-                const radiusY = Math.abs(newShape.end.y - newShape.start.y) / 2
-                
-                console.log('Creating ellipse measurement:', { centerX, centerY, radiusX, radiusY })
-                
-                const stats = calculateEllipseStats({ x: centerX, y: centerY }, radiusX, radiusY)
-                
-                const ellipseMeasurement = {
-                  id: Date.now(),
-                  type: 'ellipseStats',
-                  center: { x: centerX, y: centerY },
-                  radiusX: radiusX,
-                  radiusY: radiusY,
-                  area: stats.area,
-                  circumference: stats.circumference,
-                  majorAxis: stats.majorAxis,
-                  minorAxis: stats.minorAxis,
-                  eccentricity: stats.eccentricity,
-                  color: newShape.color,
-                  timestamp: new Date().toISOString()
-                }
-                
-                console.log('Adding ellipse measurement to state:', ellipseMeasurement)
-                setMeasurementLines((prev: any[]) => {
-                  const newLines = [...prev, ellipseMeasurement]
-                  console.log('Updated measurementLines (length):', newLines.length, 'measurements')
-                  console.log('measurementLines after addition:', newLines)
-                  return newLines
-                })
-                setMeasurementResults(prev => [...prev, ellipseMeasurement])
-                saveToHistory()
-                
-                console.log('Ellipse measurement added to measurementLines and measurementResults')
-              } else {
-                // Regular ellipse ROI
-                setDrawingShapes((prev: any[]) => [...prev, newShape])
+              // Always add the ellipse as a ROI shape
+              setDrawingShapes((prev: any[]) => [...prev, newShape])
+              
+              
                 saveToHistory()
                 
                 // Automatically prompt for label
@@ -1837,7 +1942,6 @@ const AnalysisDetail: React.FC = () => {
                 setModalType('roi-label')
                 setModalText('')
                 setShowTextModal(true)
-              }
             } else {
               // Show feedback for invalid ROI
               setValidationMessage('ROI too small. Please draw a larger area (minimum 20x20 pixels).')
@@ -1870,7 +1974,6 @@ const AnalysisDetail: React.FC = () => {
             // Validate measurement before creating
             if (distance >= MIN_DISTANCE) {
               setMeasurementLines((prev: any[]) => [...prev, measurement])
-              setMeasurementResults(prev => [...prev, measurement])
               saveToHistory()
             } else {
               setValidationMessage('Measurement too short. Please draw a longer line (minimum 15 pixels).')
@@ -1895,6 +1998,50 @@ const AnalysisDetail: React.FC = () => {
             } else {
               // Show feedback for invalid ROI
               setValidationMessage('Arrow too short. Please draw a longer arrow (minimum 15 pixels).')
+              setShowValidationMessage(true)
+              setTimeout(() => setShowValidationMessage(false), 3000)
+            }
+          }
+          break
+
+      case 'ellipseStats':
+        console.log('EllipseStats mouse up triggered, activeTool:', activeTool, 'currentShape:', toolState.currentShape)
+        if (toolState.currentShape) {
+          // Calculate ellipse coordinates for measurement
+          const centerX = (toolState.currentShape.start.x + toolState.currentShape.end.x) / 2
+          const centerY = (toolState.currentShape.start.y + toolState.currentShape.end.y) / 2
+          const radiusX = Math.abs(toolState.currentShape.end.x - toolState.currentShape.start.x) / 2
+          const radiusY = Math.abs(toolState.currentShape.end.y - toolState.currentShape.start.y) / 2
+          
+          // Validate minimum size
+          const width = radiusX * 2
+          const height = radiusY * 2
+          const isValid = width >= MIN_ROI_SIZE && height >= MIN_ROI_SIZE
+          
+          if (isValid) {
+            // Calculate ellipse statistics
+            const stats = calculateEllipseStats({ x: centerX, y: centerY }, radiusX, radiusY)
+            
+            const ellipseMeasurement = {
+              id: Date.now(),
+              type: 'ellipseStats',
+              center: { x: centerX, y: centerY },
+              radiusX: radiusX,
+              radiusY: radiusY,
+              area: stats.area,
+              circumference: stats.circumference,
+              majorAxis: stats.majorAxis,
+              minorAxis: stats.minorAxis,
+              eccentricity: stats.eccentricity,
+              color: toolState.currentShape.color,
+              timestamp: new Date().toISOString()
+            }
+            
+            setMeasurementLines((prev: any[]) => [...prev, ellipseMeasurement])
+            saveToHistory()
+          } else{
+            // Show feedback for invalid measurement
+            setValidationMessage('Ellipse too small. Please draw a larger area (minimum 20x20 pixels).')
               setShowValidationMessage(true)
               setTimeout(() => setShowValidationMessage(false), 3000)
             }
@@ -2010,7 +2157,6 @@ const AnalysisDetail: React.FC = () => {
             // Validate measurement before creating
             if (totalLength >= MIN_DISTANCE) {
               setMeasurementLines((prev: any[]) => [...prev, measurement])
-              setMeasurementResults(prev => [...prev, measurement])
               saveToHistory()
             } else {
               // Show feedback for invalid measurement
@@ -2107,12 +2253,25 @@ const AnalysisDetail: React.FC = () => {
         }
         setTextAnnotations((prev: any[]) => [...prev, newComment])
       } else if (modalType === 'roi-label' && selectedShapeForLabel) {
-        // Update the shape with the new label
+        // Update the shape with the new label and persist a linked text annotation for clean deletion
+        const newLabel = modalText.trim()
         setDrawingShapes((prev: any[]) => prev.map(shape => 
           shape.id === selectedShapeForLabel.id 
-            ? { ...shape, label: modalText.trim() }
+            ? { ...shape, label: newLabel }
             : shape
         ))
+        // Also store a hidden linked text annotation so deletion can cascade
+        const labelAnnotation = {
+          id: Date.now(),
+          type: 'text',
+          x: selectedShapeForLabel.start ? Math.min(selectedShapeForLabel.start.x, selectedShapeForLabel.end.x) - 5 : (selectedShapeForLabel.x || 0),
+          y: selectedShapeForLabel.start ? Math.min(selectedShapeForLabel.start.y, selectedShapeForLabel.end.y) - 30 : (selectedShapeForLabel.y || 0),
+          text: newLabel,
+          color: '#ffffff',
+          linkedShapeId: selectedShapeForLabel.id,
+          hidden: true
+        }
+        setTextAnnotations((prev: any[]) => [...prev, labelAnnotation])
       }
       
       saveToHistory()
@@ -2715,21 +2874,36 @@ const AnalysisDetail: React.FC = () => {
     }
   }
 
-  const deleteSelectedAnnotation = () => {
+  const deleteSelectedAnnotation = React.useCallback(() => {
     if (selectedAnnotation && selectedAnnotationType) {
-      if (selectedAnnotationType === 'shape') {
-        setDrawingShapes((prev: any[]) => prev.filter(shape => shape.id !== selectedAnnotation))
-      } else if (selectedAnnotationType === 'text') {
-        setTextAnnotations((prev: any[]) => prev.filter(annotation => annotation.id !== selectedAnnotation))
-      } else if (selectedAnnotationType === 'measurement') {
-        setMeasurementLines((prev: any[]) => prev.filter(measurement => measurement.id !== selectedAnnotation))
+      let nextState: any = {
+        shapes: drawingShapes,
+        textAnnotations,
+        measurements: measurementLines
       }
-      
+      if (selectedAnnotationType === 'shape') {
+        const nextShapes = drawingShapes.filter((shape: any) => shape.id !== selectedAnnotation)
+        // remove any ROI-linked labels/comments
+        const nextText = (textAnnotations || []).filter((annotation: any) => annotation.linkedShapeId !== selectedAnnotation)
+        setDrawingShapes(nextShapes)
+        setTextAnnotations(nextText)
+        nextState = { ...nextState, shapes: nextShapes, textAnnotations: nextText }
+      } else if (selectedAnnotationType === 'text') {
+        const nextText = textAnnotations.filter((annotation: any) => annotation.id !== selectedAnnotation)
+        setTextAnnotations(nextText)
+        nextState = { ...nextState, textAnnotations: nextText }
+      } else if (selectedAnnotationType === 'measurement') {
+        const nextMeas = measurementLines.filter((measurement: any) => measurement.id !== selectedAnnotation)
+        setMeasurementLines(nextMeas)
+        nextState = { ...nextState, measurements: nextMeas }
+      }
       saveToHistory()
       setSelectedAnnotation(null)
       setSelectedAnnotationType(null)
+      // Persist after delete
+      debouncedSaveAnnotations(selected, nextState)
     }
-  }
+  }, [selectedAnnotation, selectedAnnotationType, drawingShapes, textAnnotations, measurementLines, setDrawingShapes, setTextAnnotations, setMeasurementLines, saveToHistory, debouncedSaveAnnotations, selected, setSelectedAnnotation, setSelectedAnnotationType])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -2973,13 +3147,13 @@ const AnalysisDetail: React.FC = () => {
           
           {!leftPanelCollapsed && (
             <>
-              <SidebarHeader>
-                <SidebarTitle>Annotation Tools</SidebarTitle>
-                <div style={{ fontSize: '12px', color: '#8aa' }}>
-                  Active: {activeTool.charAt(0).toUpperCase() + activeTool.slice(1)}
-                </div>
-              </SidebarHeader>
-              
+          <SidebarHeader>
+            <SidebarTitle>Annotation Tools</SidebarTitle>
+            <div style={{ fontSize: '12px', color: '#8aa' }}>
+              Active: {activeTool.charAt(0).toUpperCase() + activeTool.slice(1)}
+            </div>
+          </SidebarHeader>
+          
               {/* Accordion Sections */}
               <div style={{ overflow: 'auto', flex: 1 }}>
                 {/* Selection & Visibility Accordion */}
@@ -2993,26 +3167,26 @@ const AnalysisDetail: React.FC = () => {
                   <AccordionContent $expanded={accordionStates.selection}>
                     
                     <CompactToolGrid>
-                      <ToolButton $isActive={activeTool === 'select'} onClick={() => setActiveTool('select')} title="Select/Move (V)">
-                        <FaMousePointer size={14} />
-                      </ToolButton>
-                      <ToolButton $isActive={overlayVisible} onClick={() => setOverlayVisible(!overlayVisible)} title="Overlay Toggle (O)">
-                        <FaEye size={14} />
-                      </ToolButton>
+                <ToolButton $isActive={activeTool === 'select'} onClick={() => setActiveTool('select')} title="Select/Move (V)">
+                  <FaMousePointer size={14} />
+                </ToolButton>
+                <ToolButton $isActive={overlayVisible} onClick={() => setOverlayVisible(!overlayVisible)} title="Overlay Toggle (O)">
+                  <FaEye size={14} />
+                </ToolButton>
                     </CompactToolGrid>
                     
                     <InputGroup>
                       <LabeledInput>
-                        <FaSlidersH size={12} style={{ color: '#8aa' }} />
+                <FaSlidersH size={12} style={{ color: '#8aa' }} />
                         <span>Opacity:</span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={overlayOpacity}
-                          onChange={(e) => setOverlayOpacity(Number(e.target.value))}
-                          title="Overlay Opacity"
-                        />
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={overlayOpacity}
+                  onChange={(e) => setOverlayOpacity(Number(e.target.value))}
+                  title="Overlay Opacity"
+                />
                         <span>{overlayOpacity}%</span>
                       </LabeledInput>
                     </InputGroup>
@@ -3030,30 +3204,30 @@ const AnalysisDetail: React.FC = () => {
                   </AccordionHeader>
                   <AccordionContent $expanded={accordionStates.roi}>
                     <ToolGrid>
-                      <ToolButton $isActive={activeTool === 'rectangle'} onClick={() => setActiveTool('rectangle')} title="Rectangle ROI (R)">
-                        <FaSquare size={14} />
-                      </ToolButton>
-                      <ToolButton $isActive={activeTool === 'ellipse'} onClick={() => setActiveTool('ellipse')} title="Ellipse ROI (E)">
-                        <FaCircle size={14} />
-                      </ToolButton>
-                      <ToolButton $isActive={activeTool === 'polygon'} onClick={() => setActiveTool('polygon')} title="Polygon ROI (P)">
-                        <FaDrawPolygon size={14} />
-                      </ToolButton>
-                      <ToolButton $isActive={activeTool === 'lasso'} onClick={() => setActiveTool('lasso')} title="Freehand Lasso (L)">
-                        <FaHands size={14} />
-                      </ToolButton>
-                      <ToolButton $isActive={activeTool === 'marker'} onClick={() => setActiveTool('marker')} title="Point/Marker (M)">
-                        <FaMapMarkerAlt size={14} />
-                      </ToolButton>
-                      <ToolButton $isActive={activeTool === 'arrow'} onClick={() => setActiveTool('arrow')} title="Arrow/Leader (A)">
-                        <FaArrowUp size={14} />
-                      </ToolButton>
-                      <ToolButton $isActive={activeTool === 'text'} onClick={() => setActiveTool('text')} title="Text (T)">
-                        <FaFont size={14} />
-                      </ToolButton>
-                      <ToolButton $isActive={activeTool === 'comment'} onClick={() => setActiveTool('comment')} title="Comment (C)">
-                        <FaComment size={14} />
-                      </ToolButton>
+                <ToolButton $isActive={activeTool === 'rectangle'} onClick={() => setActiveTool('rectangle')} title="Rectangle ROI (R)">
+                  <FaSquare size={14} />
+                </ToolButton>
+                <ToolButton $isActive={activeTool === 'ellipse'} onClick={() => setActiveTool('ellipse')} title="Ellipse ROI (E)">
+                  <FaCircle size={14} />
+                </ToolButton>
+                <ToolButton $isActive={activeTool === 'polygon'} onClick={() => setActiveTool('polygon')} title="Polygon ROI (P)">
+                  <FaDrawPolygon size={14} />
+                </ToolButton>
+                <ToolButton $isActive={activeTool === 'lasso'} onClick={() => setActiveTool('lasso')} title="Freehand Lasso (L)">
+                  <FaHands size={14} />
+                </ToolButton>
+                <ToolButton $isActive={activeTool === 'marker'} onClick={() => setActiveTool('marker')} title="Point/Marker (M)">
+                  <FaMapMarkerAlt size={14} />
+                </ToolButton>
+                <ToolButton $isActive={activeTool === 'arrow'} onClick={() => setActiveTool('arrow')} title="Arrow/Leader (A)">
+                  <FaArrowUp size={14} />
+                </ToolButton>
+                <ToolButton $isActive={activeTool === 'text'} onClick={() => setActiveTool('text')} title="Text (T)">
+                  <FaFont size={14} />
+                </ToolButton>
+                <ToolButton $isActive={activeTool === 'comment'} onClick={() => setActiveTool('comment')} title="Comment (C)">
+                  <FaComment size={14} />
+                </ToolButton>
                     </ToolGrid>
                   </AccordionContent>
                 </AccordionSection>
@@ -3070,79 +3244,82 @@ const AnalysisDetail: React.FC = () => {
                   <AccordionContent $expanded={accordionStates.measuring}>
                     
                     <CompactToolGrid>
-                      <ToolButton $isActive={activeTool === 'length'} onClick={() => setActiveTool('length')} title="Length/Caliper (D)">
-                        <FaRulerCombined size={14} />
-                      </ToolButton>
-                      <ToolButton $isActive={activeTool === 'polyline'} onClick={() => setActiveTool('polyline')} title="Polyline Length (Y)">
-                        <FaRoute size={14} />
+                <ToolButton $isActive={activeTool === 'length'} onClick={() => setActiveTool('length')} title="Length/Caliper (D)">
+                  <FaRulerCombined size={14} />
+                </ToolButton>
+                <ToolButton $isActive={activeTool === 'polyline'} onClick={() => setActiveTool('polyline')} title="Polyline Length (Y)">
+                  <FaRoute size={14} />
+                </ToolButton>
+                      <ToolButton $isActive={activeTool === 'ellipseStats'} onClick={() => setActiveTool('ellipseStats')} title="Ellipse Statistics (S)">
+                        <FaCircle size={14} />
                       </ToolButton>
                     </CompactToolGrid>
-                    
-                    {/* Measurement Unit Controls */}
+              
+              {/* Measurement Unit Controls */}
                     <InputGroup>
                       <LabeledInput>
                         <FaRuler size={12} style={{ color: '#8aa' }} />
                         <span>Units:</span>
                         <StyledSelect
-                          value={measurementUnit}
-                          onChange={(e) => handleMeasurementUnitChange(e.target.value as 'pixels' | 'mm' | 'cm')}
-                        >
-                          <option value="pixels">Pixels</option>
-                          <option value="mm">Millimeters</option>
-                          <option value="cm">Centimeters</option>
+                  value={measurementUnit}
+                  onChange={(e) => handleMeasurementUnitChange(e.target.value as 'pixels' | 'mm' | 'cm')}
+                >
+                  <option value="pixels">Pixels</option>
+                  <option value="mm">Millimeters</option>
+                  <option value="cm">Centimeters</option>
                         </StyledSelect>
                       </LabeledInput>
-                      
-                      {measurementUnit !== 'pixels' && (
+                
+                {measurementUnit !== 'pixels' && (
                         <div>
                           <LabeledInput>
                             <FaRuler size={12} style={{ color: '#8aa' }} />
                             <span>Scale:</span>
                             <StyledInput
-                              type="number"
-                              value={pixelToMmRatio}
-                              onChange={(e) => handlePixelRatioChange(parseFloat(e.target.value) || 0.5)}
-                              onBlur={(e) => {
-                                const value = parseFloat(e.target.value)
-                                if (isNaN(value) || value <= 0) {
-                                  setPixelToMmRatio(0.5) // Reset to default if invalid
-                                } else {
-                                  setPixelToMmRatio(Math.max(0.01, Math.min(1000, value))) // Clamp between 0.01 and 1000
-                                }
-                              }}
-                              min="0.01"
-                              max="1000"
-                              step="0.1"
-                              title="Scale ratio: pixels per millimeter (0.01-1000)"
+                      type="number"
+                      value={pixelToMmRatio}
+                      onChange={(e) => handlePixelRatioChange(parseFloat(e.target.value) || 0.5)}
+                      onBlur={(e) => {
+                    const value = parseFloat(e.target.value)
+                    if (isNaN(value) || value <= 0) {
+                      setPixelToMmRatio(0.5) // Reset to default if invalid
+                    } else {
+                      setPixelToMmRatio(Math.max(0.01, Math.min(1000, value))) // Clamp between 0.01 and 1000
+                    }
+                  }}
+                  min="0.01"
+                  max="1000"
+                  step="0.1"
+                  title="Scale ratio: pixels per millimeter (0.01-1000)"
                               placeholder="0.5"
-                            />
+                />
                             <span style={{ fontSize: '12px', color: '#8aa', paddingLeft: '8px' }}>px/mm</span>
                           </LabeledInput>
-                          
+                
                           <PresetButtons>
-                            <button
-                              type="button"
-                              onClick={() => setPixelToMmRatio(0.5)}
-                              title="2 pixels per mm (high-res medical imaging)"
-                            >
-                              2px/mm
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPixelToMmRatio(1)}
-                              title="1 pixel per mm (standard medical imaging)"
-                            >
-                              1px/mm
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPixelToMmRatio(2)}
-                              title="0.5 pixels per mm (lower-res imaging)"
-                            >
-                              0.5px/mm
-                            </button>
+                  <button
+                    type="button"
+                    onClick={() => setPixelToMmRatio(0.5)}
+                    title="2 pixels per mm (high-res medical imaging)"
+                  >
+                    2px/mm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPixelToMmRatio(1)}
+                    title="1 pixel per mm (standard medical imaging)"
+                  >
+                    1px/mm
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPixelToMmRatio(2)}
+                    title="0.5 pixels per mm (lower-res imaging)"
+                  >
+                    0.5px/mm
+                  </button>
                           </PresetButtons>
-                        </div>
+                </div>
                       )}
                     </InputGroup>
                     
@@ -3160,53 +3337,53 @@ const AnalysisDetail: React.FC = () => {
                   <AccordionContent $expanded={accordionStates.workflow}>
                     
                     <ToolGrid>
-                      <ToolButton onClick={undo} title="Undo (⌘Z)" disabled={historyIndex <= 0}>
-                        <FaUndo size={14} />
-                      </ToolButton>
-                      <ToolButton onClick={redo} title="Redo (⌘⇧Z)" disabled={historyIndex >= history.length - 1}>
-                        <FaRedo size={14} />
-                      </ToolButton>
-                      <ToolButton 
-                        onClick={deleteSelectedAnnotation} 
-                        title="Delete Selected (Delete)" 
-                        disabled={!selectedAnnotation}
-                        style={{ 
-                          backgroundColor: selectedAnnotation ? '#ff4444' : 'transparent',
-                          color: selectedAnnotation ? 'white' : '#8aa'
-                        }}
-                      >
-                        <FaTrash size={14} />
-                      </ToolButton>
-                      <ToolButton onClick={() => {
-                        const newBookmark = {
-                          id: Date.now(),
-                          timestamp: new Date().toISOString(),
-                          zoom,
-                          pan,
+                <ToolButton onClick={undo} title="Undo (⌘Z)" disabled={historyIndex <= 0}>
+                  <FaUndo size={14} />
+                </ToolButton>
+                <ToolButton onClick={redo} title="Redo (⌘⇧Z)" disabled={historyIndex >= history.length - 1}>
+                  <FaRedo size={14} />
+                </ToolButton>
+                <ToolButton 
+                  onClick={deleteSelectedAnnotation} 
+                  title="Delete Selected (Delete)" 
+                  disabled={!selectedAnnotation}
+                  style={{ 
+                    backgroundColor: selectedAnnotation ? '#ff4444' : 'transparent',
+                    color: selectedAnnotation ? 'white' : '#8aa'
+                  }}
+                >
+                  <FaTrash size={14} />
+                </ToolButton>
+                <ToolButton onClick={() => {
+                  const newBookmark = {
+                    id: Date.now(),
+                    timestamp: new Date().toISOString(),
+                    zoom,
+                    pan,
                           objects: (drawingShapes || []).length,
                           annotations: (textAnnotations || []).length
-                        }
-                        setBookmarks(prev => [...prev, newBookmark])
-                      }} title="Bookmark/Key Image (K)">
-                        <FaBookmark size={14} />
-                      </ToolButton>
-                      <ToolButton 
-                        $isActive={studyState === 'accepted'} 
-                        onClick={() => setStudyState(studyState === 'accepted' ? 'pending' : 'accepted')} 
-                        title="Accept"
-                      >
-                        <FaCheckCircle size={14} />
-                      </ToolButton>
-                      <ToolButton 
-                        $isActive={studyState === 'rejected'} 
-                        onClick={() => setStudyState(studyState === 'rejected' ? 'pending' : 'rejected')} 
-                        title="Reject"
-                      >
-                        <FaTimesCircle size={14} />
-                      </ToolButton>
-                      <ToolButton onClick={exportAnnotations} title="Export">
-                        <FaFileExport size={14} />
-                      </ToolButton>
+                  }
+                  setBookmarks(prev => [...prev, newBookmark])
+                }} title="Bookmark/Key Image (K)">
+                  <FaBookmark size={14} />
+                </ToolButton>
+                <ToolButton 
+                  $isActive={studyState === 'accepted'} 
+                  onClick={() => setStudyState(studyState === 'accepted' ? 'pending' : 'accepted')} 
+                  title="Accept"
+                >
+                  <FaCheckCircle size={14} />
+                </ToolButton>
+                <ToolButton 
+                  $isActive={studyState === 'rejected'} 
+                  onClick={() => setStudyState(studyState === 'rejected' ? 'pending' : 'rejected')} 
+                  title="Reject"
+                >
+                  <FaTimesCircle size={14} />
+                </ToolButton>
+                <ToolButton onClick={exportAnnotations} title="Export">
+                  <FaFileExport size={14} />
+                </ToolButton>
                     </ToolGrid>
                     
                   </AccordionContent>
@@ -3280,19 +3457,28 @@ const AnalysisDetail: React.FC = () => {
               return (
                       <div style={{ width: '100%', height: '100%', position: 'relative' }}>
                         <div style={{ 
-                          pointerEvents: activeTool === 'select' ? 'auto' : 'none',
+                          pointerEvents: activeTool === 'select' ? 'none' : 'auto',
                           width: '100%', 
-                          height: '100%' 
+                          height: '100%',
+                          position: 'absolute',
+                          top: 0,
+                          left: 0
                         }}>
             <ImageViewer 
                     imageUrl={currentFile?.url} 
                             showControls={activeTool === 'select'} 
                     inlineDicomViewer={isDicomFile(currentFile?.url, currentFile?.name)}
                     alt={currentFile?.name || 'Medical scan'}
+                    externalTransform={{ scale: zoom, translateX: pan.x, translateY: pan.y }}
+                    disableInteractions={activeTool !== 'select'}
+                    onTransformChange={(transform) => {
+                      setZoom(transform.scale);
+                      setPan({ x: transform.translateX, y: transform.translateY });
+                    }}
                   />
               </div>
                         
-                        {/* Annotations Overlay - Inside ImageViewer */}
+                        {/* Annotations Overlay - transformed with image */}
                         {overlayVisible && (
                           <div
                             style={{
@@ -3311,6 +3497,7 @@ const AnalysisDetail: React.FC = () => {
                               const isSelected = selectedAnnotation === shape.id && selectedAnnotationType === 'shape'
                               
                               if (shape.type === 'marker') {
+                                const markerScreen = imageToScreenCoords(shape.x, shape.y)
                                 return (
                                   <div
                                     key={shape.id}
@@ -3318,8 +3505,8 @@ const AnalysisDetail: React.FC = () => {
                                     onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                     style={{
                                       position: 'absolute',
-                                      left: shape.x,
-                                      top: shape.y,
+                                      left: markerScreen.x,
+                                      top: markerScreen.y,
                                       width: '12px',
                                       height: '12px',
                                       background: shape.color,
@@ -3337,10 +3524,10 @@ const AnalysisDetail: React.FC = () => {
                               if (shape.type === 'rectangle') {
                                 // Use stored coordinates if available, otherwise fall back to start/end calculation
                                 const coords = shape.coordinates || {
-                                  topLeft: { X: Math.min(shape.start.x, shape.end.x), Y: Math.min(shape.start.y, shape.end.y) },
-                                  width: Math.abs(shape.end.x - shape.start.x),
-                                  height: Math.abs(shape.end.y - shape.start.y)
+                                  topLeft: { x: Math.min(shape.start.x, shape.end.x), y: Math.min(shape.start.y, shape.end.y) },
+                                  bottomRight: { x: Math.max(shape.start.x, shape.end.x), y: Math.max(shape.start.y, shape.end.y) }
                                 }
+                                const rect = projectRect(coords.topLeft, coords.bottomRight)
                                 
                                 return (
                                   <div key={shape.id}>
@@ -3349,10 +3536,10 @@ const AnalysisDetail: React.FC = () => {
                                       onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                       style={{
                                         position: 'absolute',
-                                        left: coords.topLeft.x,
-                                        top: coords.topLeft.y,
-                                        width: coords.width,
-                                        height: coords.height,
+                                        left: rect.left,
+                                        top: rect.top,
+                                        width: rect.width,
+                                        height: rect.height,
                                         border: isSelected ? '3px solid #0694fb' : `2px solid ${shape.color}`,
                                         background: `${shape.color}20`,
                                         pointerEvents: 'auto',
@@ -3360,12 +3547,15 @@ const AnalysisDetail: React.FC = () => {
                                         boxShadow: isSelected ? '0 0 8px rgba(6, 148, 251, 0.6)' : 'none'
                                       }}
                                     />
-                                    {shape.label && (
+                                    {shape.label && (() => {
+                                      const labelPos = getLabelPosition(shape)
+                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
+                                      return (
                                       <div
                                         style={{
                                           position: 'absolute',
-                                          left: Math.min(shape.start.x, shape.end.x) - 5,
-                                          top: Math.min(shape.start.y, shape.end.y) - 30,
+                                            left: labelScreen.x,
+                                            top: labelScreen.y,
                                           background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
                                           color: 'white',
                                           padding: '4px 8px',
@@ -3382,17 +3572,18 @@ const AnalysisDetail: React.FC = () => {
                                       >
                                         {shape.label.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
               </div>
-                                    )}
+                                      )
+                                    })()}
                                   </div>
                                 )
                               }
                               if (shape.type === 'ellipse') {
                                 // Use stored coordinates if available, otherwise fall back to start/end calculation
                                 const coords = shape.coordinates || {
-                                  topLeft: { X: Math.min(shape.start.x, shape.end.x), Y: Math.min(shape.start.y, shape.end.y) },
-                                  width: Math.abs(shape.end.x - shape.start.x),
-                                  height: Math.abs(shape.end.y - shape.start.y)
+                                  topLeft: { x: Math.min(shape.start.x, shape.end.x), y: Math.min(shape.start.y, shape.end.y) },
+                                  bottomRight: { x: Math.max(shape.start.x, shape.end.x), y: Math.max(shape.start.y, shape.end.y) }
                                 }
+                                const rect = projectRect(coords.topLeft, coords.bottomRight)
                                 
                                 return (
                                   <div key={shape.id}>
@@ -3401,10 +3592,10 @@ const AnalysisDetail: React.FC = () => {
                                       onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                       style={{
                                         position: 'absolute',
-                                        left: coords.topLeft.X,
-                                        top: coords.topLeft.Y,
-                                        width: coords.width,
-                                        height: coords.height,
+                                        left: rect.left,
+                                        top: rect.top,
+                                        width: rect.width,
+                                        height: rect.height,
                                         border: isSelected ? '3px solid #0694fb' : `2px solid ${shape.color}`,
                                         background: `${shape.color}20`,
                                         borderRadius: '50%',
@@ -3415,12 +3606,13 @@ const AnalysisDetail: React.FC = () => {
                                     />
                                     {shape.label && (() => {
                                       const labelPos = getLabelPosition(shape)
+                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
                                       return (
                                         <div
                                           style={{
                                             position: 'absolute',
-                                            left: labelPos.x,
-                                            top: labelPos.y,
+                                            left: labelScreen.x,
+                                            top: labelScreen.y,
                                             background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
                                             color: 'white',
                                             padding: '4px 8px',
@@ -3462,12 +3654,13 @@ const AnalysisDetail: React.FC = () => {
                                     />
                                     {shape.label && (() => {
                                       const labelPos = getLabelPosition(shape)
+                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
                                       return (
                                         <div
                                           style={{
                                             position: 'absolute',
-                                            left: labelPos.x,
-                                            top: labelPos.y,
+                                            left: labelScreen.x,
+                                            top: labelScreen.y,
                                             background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
                                             color: 'white',
                                             padding: '4px 8px',
@@ -3521,10 +3714,10 @@ const AnalysisDetail: React.FC = () => {
                                         </marker>
                                       </defs>
                                       <line
-                                        x1={shape.start.x}
-                                        y1={shape.start.y}
-                                        x2={shape.end.x}
-                                        y2={shape.end.y}
+                                        x1={imageToScreenCoords(shape.start.x, shape.start.y).x}
+                                        y1={imageToScreenCoords(shape.start.x, shape.start.y).y}
+                                        x2={imageToScreenCoords(shape.end.x, shape.end.y).x}
+                                        y2={imageToScreenCoords(shape.end.x, shape.end.y).y}
                                       stroke={isSelected ? '#0694fb' : shape.color}
                                       strokeWidth={isSelected ? "3" : "2"}
                                       markerEnd={`url(#arrowhead-${shape.id})`}
@@ -3536,12 +3729,13 @@ const AnalysisDetail: React.FC = () => {
                                     </svg>
                                     {shape.label && (() => {
                                       const labelPos = getLabelPosition(shape)
+                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
                                       return (
                                         <div
                                           style={{
                                             position: 'absolute',
-                                            left: labelPos.x,
-                                            top: labelPos.y,
+                                            left: labelScreen.x,
+                                            top: labelScreen.y,
                                             background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
                                             color: 'white',
                                             padding: '4px 8px',
@@ -3580,7 +3774,10 @@ const AnalysisDetail: React.FC = () => {
                                       }}
                                     >
                                       <polygon
-                                        points={shape.points.map((p: any) => `${p.x},${p.y}`).join(' ')}
+                                        points={shape.points.map((p: any) => {
+                                          const s = imageToScreenCoords(p.x, p.y)
+                                          return `${s.x},${s.y}`
+                                        }).join(' ')}
                                         fill={`${shape.color}20`}
                                       stroke={isSelected ? '#0694fb' : shape.color}
                                       strokeWidth={isSelected ? "3" : "2"}
@@ -3592,12 +3789,13 @@ const AnalysisDetail: React.FC = () => {
                                     </svg>
                                     {shape.label && (() => {
                                       const labelPos = getLabelPosition(shape)
+                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
                                       return (
                                         <div
                                           style={{
                                             position: 'absolute',
-                                            left: labelPos.x,
-                                            top: labelPos.y,
+                                            left: labelScreen.x,
+                                            top: labelScreen.y,
                                             background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
                                             color: 'white',
                                             padding: '4px 8px',
@@ -3636,7 +3834,14 @@ const AnalysisDetail: React.FC = () => {
                                       }}
                                     >
                                       <path
-                                        d={`M ${shape.points[0].x} ${shape.points[0].y} ${shape.points.map((p: any) => `L ${p.x} ${p.y}`).join(' ')}`}
+                                        d={(() => {
+                                          const s0 = imageToScreenCoords(shape.points[0].x, shape.points[0].y)
+                                          const rest = shape.points.map((p: any) => {
+                                            const s = imageToScreenCoords(p.x, p.y)
+                                            return `L ${s.x} ${s.y}`
+                                          }).join(' ')
+                                          return `M ${s0.x} ${s0.y} ${rest}`
+                                        })()}
                                         fill="none"
                                       stroke={isSelected ? '#0694fb' : shape.color}
                                       strokeWidth={isSelected ? "3" : "2"}
@@ -3648,12 +3853,13 @@ const AnalysisDetail: React.FC = () => {
                                     </svg>
                                     {shape.label && (() => {
                                       const labelPos = getLabelPosition(shape)
+                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
                                       return (
                                         <div
                                           style={{
                                             position: 'absolute',
-                                            left: labelPos.x,
-                                            top: labelPos.y,
+                                            left: labelScreen.x,
+                                            top: labelScreen.y,
                                             background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
                                             color: 'white',
                                             padding: '4px 8px',
@@ -3820,27 +4026,6 @@ const AnalysisDetail: React.FC = () => {
                                   </div>
                                 )
                               }
-                              if (shape.type === 'ellipseStats') {
-                                return (
-                                  <div
-                                    key={shape.id}
-                                    style={{
-                                      position: 'absolute',
-                                      left: shape.center.x - shape.radiusX,
-                                      top: shape.center.y - shape.radiusY,
-                                      width: shape.radiusX * 2,
-                                      height: shape.radiusY * 2,
-                                      borderRadius: '50%',
-                                      background: 'transparent',
-                                      cursor: 'pointer',
-                                      border: selectedAnnotation === shape.id ? `3px solid #fff` : `2px solid ${shape.color}`,
-                                      boxShadow: selectedAnnotation === shape.id ? '0 0 10px rgba(255,255,255,0.8)' : 'none'
-                                    }}
-                                    onClick={(e) => handleAnnotationClick(e, shape.id, 'shape')}
-                                    title={`Ellipse Stats: Area: ${shape.area}, Circumference: ${shape.circumference}, Major Axis: ${shape.majorAxis}, Minor Axis: ${shape.minorAxis}, Eccentricity: ${shape.eccentricity}`}
-                                  />
-                                )
-                              }
                               if (shape.type === 'probe') {
                                 return (
                                   <div
@@ -3909,55 +4094,76 @@ const AnalysisDetail: React.FC = () => {
                               if (measurement.type === 'length') {
                                 const midX = (measurement.start.x + measurement.end.x) / 2
                                 const midY = (measurement.start.y + measurement.end.y) / 2
+                                const startScreen = imageToScreenCoords(measurement.start.x, measurement.start.y)
+                                const endScreen = imageToScreenCoords(measurement.end.x, measurement.end.y)
+                                const midScreen = imageToScreenCoords(midX, midY)
+                                
+                                const isSelected = selectedAnnotation === measurement.id && selectedAnnotationType === 'measurement'
                                 
                                 return (
                                   <svg
                                     key={measurement.id}
+                                    onClick={(e) => handleAnnotationClick(e, measurement.id, 'measurement')}
                                     style={{
                                       position: 'absolute',
                                       top: 0,
                                       left: 0,
                                       width: '100%',
                                       height: '100%',
-                                      pointerEvents: 'none'
+                                      pointerEvents: 'auto',
+                                      cursor: 'pointer'
                                     }}
                                   >
                                     {/* Measurement line */}
                                     <line
-                                      x1={measurement.start.x}
-                                      y1={measurement.start.y}
-                                      x2={measurement.end.x}
-                                      y2={measurement.end.y}
-                                      stroke={measurement.color}
-                                      strokeWidth="2"
+                                      x1={startScreen.x}
+                                      y1={startScreen.y}
+                                      x2={endScreen.x}
+                                      y2={endScreen.y}
+                                      stroke={isSelected ? '#0694fb' : measurement.color}
+                                      strokeWidth={isSelected ? "3" : "2"}
+                                      style={{
+                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
+                                        transition: 'all 0.2s ease'
+                                      }}
                                     />
                                     
                                     {/* Start point */}
                                     <circle
-                                      cx={measurement.start.x}
-                                      cy={measurement.start.y}
+                                      cx={startScreen.x}
+                                      cy={startScreen.y}
                                       r="4"
-                                      fill={measurement.color}
+                                      fill={isSelected ? '#0694fb' : measurement.color}
+                                      style={{
+                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
+                                        transition: 'all 0.2s ease'
+                                      }}
                                     />
                                     
                                     {/* End point */}
                                     <circle
-                                      cx={measurement.end.x}
-                                      cy={measurement.end.y}
+                                      cx={endScreen.x}
+                                      cy={endScreen.y}
                                       r="4"
-                                      fill={measurement.color}
+                                      fill={isSelected ? '#0694fb' : measurement.color}
+                                      style={{
+                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
+                                        transition: 'all 0.2s ease'
+                                      }}
                                     />
                                     
                                     {/* Distance label */}
                                     <text
-                                      x={midX}
-                                      y={midY - 10}
+                                      x={midScreen.x}
+                                      y={midScreen.y - 10}
                                       textAnchor="middle"
-                                      fill={measurement.color}
+                                      fill={isSelected ? '#0694fb' : measurement.color}
                                       fontSize="12"
                                       fontWeight="bold"
                                       style={{
-                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)'
+                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
+                                        transition: 'all 0.2s ease'
                                       }}
                                     >
                                       {measurement.formattedDistance}
@@ -3970,44 +4176,65 @@ const AnalysisDetail: React.FC = () => {
                               if (measurement.type === 'polyline') {
                                 const midPointIndex = Math.floor(measurement.points.length / 2)
                                 const midPoint = measurement.points[midPointIndex]
+                                const midPointScreen = imageToScreenCoords(midPoint.x, midPoint.y)
+                                
+                                const isSelected = selectedAnnotation === measurement.id && selectedAnnotationType === 'measurement'
                                 
               return (
                                   <svg
                                     key={measurement.id}
+                                    onClick={(e) => handleAnnotationClick(e, measurement.id, 'measurement')}
                                     style={{
                                       position: 'absolute',
                                       top: 0,
                                       left: 0,
                                       width: '100%',
                                       height: '100%',
-                                      pointerEvents: 'none'
+                                      pointerEvents: 'auto',
+                                      cursor: 'pointer'
                                     }}
                                   >
                                     <path
-                                      d={`M ${measurement.points[0].x} ${measurement.points[0].y} ${measurement.points.map((p: any) => `L ${p.x} ${p.y}`).join(' ')}`}
+                                      d={`M ${imageToScreenCoords(measurement.points[0].x, measurement.points[0].y).x} ${imageToScreenCoords(measurement.points[0].x, measurement.points[0].y).y} ${measurement.points.map((p: any) => {
+                                        const screenP = imageToScreenCoords(p.x, p.y)
+                                        return `L ${screenP.x} ${screenP.y}`
+                                      }).join(' ')}`}
                                       fill="none"
-                                      stroke={measurement.color}
-                                      strokeWidth="2"
+                                      stroke={isSelected ? '#0694fb' : measurement.color}
+                                      strokeWidth={isSelected ? "3" : "2"}
+                                      style={{
+                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
+                                        transition: 'all 0.2s ease'
+                                      }}
                                     />
-                                    {measurement.points.map((point: any, index: number) => (
+                                    {measurement.points.map((point: any, index: number) => {
+                                      const screenP = imageToScreenCoords(point.x, point.y)
+                                      return (
                                       <circle
                                         key={index}
-                                        cx={point.x}
-                                        cy={point.y}
+                                          cx={screenP.x}
+                                          cy={screenP.y}
                                         r="3"
-                                        fill={measurement.color}
+                                        fill={isSelected ? '#0694fb' : measurement.color}
+                                        style={{
+                                          filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
+                                          transition: 'all 0.2s ease'
+                                        }}
                                       />
-                                    ))}
+                                      )
+                                    })}
                                     {/* Total length label */}
                                     <text
-                                      x={midPoint.x}
-                                      y={midPoint.y - 10}
+                                      x={midPointScreen.x}
+                                      y={midPointScreen.y - 10}
                                       textAnchor="middle"
-                                      fill={measurement.color}
+                                      fill={isSelected ? '#0694fb' : measurement.color}
                                       fontSize="12"
                                       fontWeight="bold"
                                       style={{
-                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)'
+                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
+                                        transition: 'all 0.2s ease'
                                       }}
                                     >
                                       {measurement.formattedLength}
@@ -4018,42 +4245,50 @@ const AnalysisDetail: React.FC = () => {
                               
                               if (measurement.type === 'ellipseStats') {
                                 console.log('Rendering ellipse stats measurement:', measurement)
+                                const centerScreen = imageToScreenCoords(measurement.center.x, measurement.center.y)
+                                const radiusXScreen = measurement.radiusX * zoom
+                                const radiusYScreen = measurement.radiusY * zoom
+                                
+                                const isSelected = selectedAnnotation === measurement.id && selectedAnnotationType === 'measurement'
+                                
                                 return (
                                   <svg
                                     key={measurement.id}
+                                    onClick={(e) => handleAnnotationClick(e, measurement.id, 'measurement')}
                                     style={{
                       position: 'absolute',
                                       top: 0,
                                       left: 0,
                                       width: '100%',
                                       height: '100%',
-                                      pointerEvents: 'none'
+                                      pointerEvents: 'auto',
+                                      cursor: 'pointer'
                                     }}
                                   >
                                     {/* Ellipse outline */}
                                     <ellipse
-                                      cx={measurement.center.x}
-                                      cy={measurement.center.y}
-                                      rx={measurement.radiusX}
-                                      ry={measurement.radiusY}
+                                      cx={centerScreen.x}
+                                      cy={centerScreen.y}
+                                      rx={radiusXScreen}
+                                      ry={radiusYScreen}
                                       fill="none"
-                                      stroke={measurement.color}
-                                      strokeWidth="2"
+                                      stroke={isSelected ? '#0694fb' : measurement.color}
+                                      strokeWidth={isSelected ? "3" : "2"}
                                       strokeDasharray="5,5"
                                     />
                                     
                                     {/* Center point */}
                                     <circle
-                                      cx={measurement.center.x}
-                                      cy={measurement.center.y}
+                                      cx={centerScreen.x}
+                                      cy={centerScreen.y}
                                       r="3"
-                                      fill={measurement.color}
+                                      fill={isSelected ? '#0694fb' : measurement.color}
                                     />
                                     
                                     {/* Area label */}
                                     <text
-                                      x={measurement.center.x}
-                                      y={measurement.center.y - measurement.radiusY - 20}
+                                      x={centerScreen.x}
+                                      y={centerScreen.y - radiusYScreen - 20}
                                       textAnchor="middle"
                                       fill={measurement.color}
                                       fontSize="11"
@@ -4067,8 +4302,8 @@ const AnalysisDetail: React.FC = () => {
                                     
                                     {/* Circumference label */}
                                     <text
-                                      x={measurement.center.x}
-                                      y={measurement.center.y - measurement.radiusY - 5}
+                                      x={centerScreen.x}
+                                      y={centerScreen.y - radiusYScreen - 5}
                                       textAnchor="middle"
                                       fill={measurement.color}
                                       fontSize="11"
@@ -4082,8 +4317,8 @@ const AnalysisDetail: React.FC = () => {
                                     
                                     {/* Major/Minor axes label */}
                                     <text
-                                      x={measurement.center.x}
-                                      y={measurement.center.y + measurement.radiusY + 15}
+                                      x={centerScreen.x}
+                                      y={centerScreen.y + radiusYScreen + 15}
                                       textAnchor="middle"
                                       fill={measurement.color}
                                       fontSize="11"
@@ -4097,8 +4332,8 @@ const AnalysisDetail: React.FC = () => {
                                     
                                     {/* Eccentricity label */}
                                     <text
-                                      x={measurement.center.x}
-                                      y={measurement.center.y + measurement.radiusY + 30}
+                                      x={centerScreen.x}
+                                      y={centerScreen.y + radiusYScreen + 30}
                                       textAnchor="middle"
                                       fill={measurement.color}
                                       fontSize="11"
@@ -4116,8 +4351,9 @@ const AnalysisDetail: React.FC = () => {
                             })}
 
                             {/* Render text annotations */}
-                            {(textAnnotations || []).map(annotation => {
+                            {(textAnnotations || []).filter(a => !a.hidden).map(annotation => {
                               const isSelected = selectedAnnotation === annotation.id && selectedAnnotationType === 'text'
+                              const screenPos = imageToScreenCoords(annotation.x, annotation.y)
                               
               return (
                                 <div
@@ -4126,8 +4362,8 @@ const AnalysisDetail: React.FC = () => {
                                   onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                   style={{
                       position: 'absolute',
-                                    left: annotation.x,
-                                    top: annotation.y,
+                                    left: screenPos.x,
+                                    top: screenPos.y,
                                     color: annotation.type === 'comment' ? '#000000' : annotation.color,
                                     background: annotation.type === 'comment' ? 'rgba(255,255,0,0.9)' : 'rgba(0,0,0,0.7)',
                       padding: '4px 8px',
@@ -4157,17 +4393,23 @@ const AnalysisDetail: React.FC = () => {
                                   <div
                                     style={{
                                       position: 'absolute',
-                                      left: Math.min(toolState.currentShape.start.x, toolState.currentShape.end.x),
-                                      top: Math.min(toolState.currentShape.start.y, toolState.currentShape.end.y),
-                                      width: Math.abs(toolState.currentShape.end.x - toolState.currentShape.start.x),
-                                      height: Math.abs(toolState.currentShape.end.y - toolState.currentShape.start.y),
+                                      left: (() => {
+                                        const minX = Math.min(toolState.currentShape.start.x, toolState.currentShape.end.x)
+                                        return imageToScreenCoords(minX, 0).x
+                                      })(),
+                                      top: (() => {
+                                        const minY = Math.min(toolState.currentShape.start.y, toolState.currentShape.end.y)
+                                        return imageToScreenCoords(0, minY).y
+                                      })(),
+                                      width: Math.abs(toolState.currentShape.end.x - toolState.currentShape.start.x) * zoom,
+                                      height: Math.abs(toolState.currentShape.end.y - toolState.currentShape.start.y) * zoom,
                                       border: `2px solid ${toolState.currentShape.color}`,
                                       background: `${toolState.currentShape.color}20`,
                                       pointerEvents: 'none'
                                     }}
                                   />
                                 )}
-                                {toolState.currentShape.type === 'ellipse' && (
+                                {(toolState.currentShape.type === 'ellipse' || toolState.currentShape.type === 'ellipseStats') && (
                                   <svg
                                     style={{
                                       position: 'absolute',
@@ -4179,11 +4421,23 @@ const AnalysisDetail: React.FC = () => {
                                     }}
                                   >
                                     {/* Ellipse outline */}
+                                    {(() => {
+                                      const centerX = (toolState.currentShape.start.x + toolState.currentShape.end.x) / 2
+                                      const centerY = (toolState.currentShape.start.y + toolState.currentShape.end.y) / 2
+                                      const radiusX = Math.abs(toolState.currentShape.end.x - toolState.currentShape.start.x) / 2
+                                      const radiusY = Math.abs(toolState.currentShape.end.y - toolState.currentShape.start.y) / 2
+                                      
+                                      const centerScreen = imageToScreenCoords(centerX, centerY)
+                                      const radiusXScreen = radiusX * zoom
+                                      const radiusYScreen = radiusY * zoom
+                                      
+                                      return (
+                                        <>
                                     <ellipse
-                                      cx={(toolState.currentShape.start.x + toolState.currentShape.end.x) / 2}
-                                      cy={(toolState.currentShape.start.y + toolState.currentShape.end.y) / 2}
-                                      rx={Math.abs(toolState.currentShape.end.x - toolState.currentShape.start.x) / 2}
-                                      ry={Math.abs(toolState.currentShape.end.y - toolState.currentShape.start.y) / 2}
+                                            cx={centerScreen.x}
+                                            cy={centerScreen.y}
+                                            rx={radiusXScreen}
+                                            ry={radiusYScreen}
                                       fill="none"
                                       stroke={toolState.currentShape.color}
                                       strokeWidth="2"
@@ -4192,11 +4446,14 @@ const AnalysisDetail: React.FC = () => {
                                     
                                     {/* Center point */}
                                     <circle
-                                      cx={(toolState.currentShape.start.x + toolState.currentShape.end.x) / 2}
-                                      cy={(toolState.currentShape.start.y + toolState.currentShape.end.y) / 2}
+                                            cx={centerScreen.x}
+                                            cy={centerScreen.y}
                                       r="3"
                                       fill={toolState.currentShape.color}
                                     />
+                                        </>
+                                      )
+                                    })()}
                                   </svg>
                                 )}
                                 {toolState.currentShape.type === 'length' && (
@@ -4211,46 +4468,40 @@ const AnalysisDetail: React.FC = () => {
                                     }}
                                   >
                                     {/* Measurement line */}
+                                    {(() => {
+                                      const s = imageToScreenCoords(toolState.currentShape.start.x, toolState.currentShape.start.y)
+                                      const e = imageToScreenCoords(toolState.currentShape.end.x, toolState.currentShape.end.y)
+                                      const mid = { x: (s.x + e.x) / 2, y: (s.y + e.y) / 2 }
+                                      return (
+                                        <>
                                     <line
-                                      x1={toolState.currentShape.start.x}
-                                      y1={toolState.currentShape.start.y}
-                                      x2={toolState.currentShape.end.x}
-                                      y2={toolState.currentShape.end.y}
+                                            x1={s.x}
+                                            y1={s.y}
+                                            x2={e.x}
+                                            y2={e.y}
                                       stroke={toolState.currentShape.color}
                                       strokeWidth="2"
                                       strokeDasharray="5,5"
                                     />
-                                    
                                     {/* Start point */}
-                                    <circle
-                                      cx={toolState.currentShape.start.x}
-                                      cy={toolState.currentShape.start.y}
-                                      r="4"
-                                      fill={toolState.currentShape.color}
-                                    />
-                                    
+                                          <circle cx={s.x} cy={s.y} r="4" fill={toolState.currentShape.color} />
                                     {/* End point */}
-                                    <circle
-                                      cx={toolState.currentShape.end.x}
-                                      cy={toolState.currentShape.end.y}
-                                      r="4"
-                                      fill={toolState.currentShape.color}
-                                    />
-                                    
+                                          <circle cx={e.x} cy={e.y} r="4" fill={toolState.currentShape.color} />
                                     {/* Distance label */}
                                     <text
-                                      x={(toolState.currentShape.start.x + toolState.currentShape.end.x) / 2}
-                                      y={(toolState.currentShape.start.y + toolState.currentShape.end.y) / 2 - 10}
+                                            x={mid.x}
+                                            y={mid.y - 10}
                                       textAnchor="middle"
                                       fill={toolState.currentShape.color}
                                       fontSize="12"
                                       fontWeight="bold"
-                                      style={{
-                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)'
-                                      }}
+                                            style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}
                                     >
                                       {formatMeasurement(calculateDistance(toolState.currentShape.start, toolState.currentShape.end))}
                                     </text>
+                                        </>
+                                      )
+                                    })()}
                                   </svg>
                                 )}
                                 {toolState.currentShape.type === 'arrow' && (
@@ -4302,7 +4553,10 @@ const AnalysisDetail: React.FC = () => {
                                     }}
                                   >
                                     <polygon
-                                      points={toolState.currentShape.points.map((p: any) => `${p.x},${p.y}`).join(' ')}
+                                      points={toolState.currentShape.points.map((p: any) => {
+                                        const s = imageToScreenCoords(p.x, p.y)
+                                        return `${s.x},${s.y}`
+                                      }).join(' ')}
                                       fill={`${toolState.currentShape.color}20`}
                                       stroke={toolState.currentShape.color}
                                       strokeWidth="2"
@@ -4321,7 +4575,14 @@ const AnalysisDetail: React.FC = () => {
                                     }}
                                   >
                                     <path
-                                      d={`M ${toolState.currentShape.points[0].x} ${toolState.currentShape.points[0].y} ${toolState.currentShape.points.map((p: any) => `L ${p.x} ${p.y}`).join(' ')}`}
+                                      d={(() => {
+                                        const s0 = imageToScreenCoords(toolState.currentShape.points[0].x, toolState.currentShape.points[0].y)
+                                        const rest = toolState.currentShape.points.map((p: any) => {
+                                          const s = imageToScreenCoords(p.x, p.y)
+                                          return `L ${s.x} ${s.y}`
+                                        }).join(' ')
+                                        return `M ${s0.x} ${s0.y} ${rest}`
+                                      })()}
                                       fill="none"
                                       stroke={toolState.currentShape.color}
                                       strokeWidth="2"
@@ -4345,21 +4606,23 @@ const AnalysisDetail: React.FC = () => {
                                       pointerEvents: 'none'
                                     }}
                                   >
-                                    <path
-                                      d={`M ${toolState.currentMeasurement.points[0].x} ${toolState.currentMeasurement.points[0].y} ${toolState.currentMeasurement.points.map((p: any) => `L ${p.x} ${p.y}`).join(' ')}`}
-                                      fill="none"
-                                      stroke={toolState.currentMeasurement.color}
-                                      strokeWidth="2"
-                                    />
-                                    {toolState.currentMeasurement.points.map((point: any, index: number) => (
-                                      <circle
-                                        key={index}
-                                        cx={point.x}
-                                        cy={point.y}
-                                        r="3"
-                                        fill={toolState.currentMeasurement.color}
-                                      />
-                                    ))}
+                                    {(() => {
+                                      const toScreen = (p: any) => imageToScreenCoords(p.x, p.y)
+                                      const first = toScreen(toolState.currentMeasurement.points[0])
+                                      const d = `M ${first.x} ${first.y} ` + toolState.currentMeasurement.points.map((p: any) => {
+                                        const s = toScreen(p)
+                                        return `L ${s.x} ${s.y}`
+                                      }).join(' ')
+                                      return (
+                                        <>
+                                          <path d={d} fill="none" stroke={toolState.currentMeasurement.color} strokeWidth="2" />
+                                          {toolState.currentMeasurement.points.map((point: any, index: number) => {
+                                            const s = toScreen(point)
+                                            return <circle key={index} cx={s.x} cy={s.y} r="3" fill={toolState.currentMeasurement.color} />
+                                          })}
+                                        </>
+                                      )
+                                    })()}
                                   </svg>
                                 )}
                               </>
@@ -4535,17 +4798,17 @@ const AnalysisDetail: React.FC = () => {
             <SectionTitle>Properties & Labels</SectionTitle>
             
             {/* Active Label */}
-                            <div style={{ marginBottom: '16px' }}>
-                                <div style={{ fontSize: '12px', color: '#8aa', marginBottom: '8px' }}>Active Label</div>
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '12px', color: '#8aa', marginBottom: '8px' }}>Active Label</div>
                                 <StyledSelect
-                                    value={activeLabel}
-                                    onChange={(e) => setActiveLabel(e.target.value)}
-                                >
-                                    {labels.map(label => (
-                                        <option key={label.id} value={label.id}>{label.name}</option>
-                                    ))}
+                value={activeLabel}
+                onChange={(e) => setActiveLabel(e.target.value)}
+              >
+                {labels.map(label => (
+                  <option key={label.id} value={label.id}>{label.name}</option>
+                ))}
                                 </StyledSelect>
-                            </div>
+            </div>
 
             {/* Label List */}
             <div style={{ marginBottom: '16px' }}>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/dicom/test-bucket - Test if DICOM bucket exists and is accessible
 export async function GET(request: NextRequest) {
     try {

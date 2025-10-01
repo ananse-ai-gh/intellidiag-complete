@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
 import { createServerSupabaseClient } from '@/lib/supabase';
 
 const verifySupabaseSession = async (request: NextRequest) => {
@@ -118,6 +119,7 @@ export async function POST(
         const supabase = createServerSupabaseClient();
 
         console.log('💾 Saving annotations for scan:', scanId, 'image index:', imageIndex);
+        console.log('📦 Received annotations payload:', JSON.stringify(annotations, null, 2));
 
         // Prepare annotation data for database
         const annotationsToSave: Array<{
@@ -165,6 +167,7 @@ export async function POST(
         }))
 
         // Delete existing annotations for this image first
+        console.log('🗑️ Deleting existing annotations for scan:', scanId, 'image:', imageIndex);
         const { error: deleteError } = await supabase
             .from('annotations')
             .delete()
@@ -178,9 +181,12 @@ export async function POST(
                 { status: 500 }
             )
         }
+        console.log('✅ Successfully deleted existing annotations');
 
         // Insert new annotations
+        console.log('📝 Preparing to insert', dbAnnotations.length, 'annotations');
         if (dbAnnotations.length > 0) {
+            console.log('💾 Inserting annotations:', JSON.stringify(dbAnnotations, null, 2));
             const { error: insertError } = await supabase
                 .from('annotations')
                 .insert(dbAnnotations)
@@ -192,6 +198,9 @@ export async function POST(
                     { status: 500 }
                 )
             }
+            console.log('✅ Successfully inserted', dbAnnotations.length, 'annotations');
+        } else {
+            console.log('⚠️ No annotations to insert - table will be empty');
         }
 
         console.log(`✅ Successfully saved ${dbAnnotations.length} annotations`)

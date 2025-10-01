@@ -16,6 +16,9 @@ interface ImageViewerProps {
   maxZoom?: number;
   minZoom?: number;
   inlineDicomViewer?: boolean; // New prop for inline DICOM viewing
+  externalTransform?: { scale: number; translateX: number; translateY: number };
+  disableInteractions?: boolean;
+  onTransformChange?: (transform: { scale: number; translateX: number; translateY: number }) => void;
 }
 
 const ViewerContainer = styled.div`
@@ -30,8 +33,8 @@ const ViewerContainer = styled.div`
 
 const ImageContainer = styled.div<{ scale: number; translateX: number; translateY: number }>`
   position: relative;
-  transform: scale(${props => props.scale}) translate(${props => props.translateX}px, ${props => props.translateY}px);
-  transform-origin: center center;
+  transform: translate(${props => props.translateX}px, ${props => props.translateY}px) scale(${props => props.scale});
+  transform-origin: 0 0;
   transition: transform 0.1s ease-out;
   width: 100%;
   height: 100%;
@@ -197,7 +200,10 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
   initialZoom = 1,
   maxZoom = 5,
   minZoom = 0.5,
-  inlineDicomViewer = false
+  inlineDicomViewer = false,
+  externalTransform,
+  disableInteractions,
+  onTransformChange
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -224,11 +230,17 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
 
   useEffect(() => {
     setIsLoading(true);
-    setScale(initialZoom);
-    setTranslateX(0);
-    setTranslateY(0);
+    if (!externalTransform) {
+      setScale(initialZoom);
+      setTranslateX(0);
+      setTranslateY(0);
+    } else {
+      setScale(externalTransform.scale);
+      setTranslateX(externalTransform.translateX);
+      setTranslateY(externalTransform.translateY);
+    }
     setRotation(0);
-  }, [imageUrl, initialZoom]);
+  }, [imageUrl, initialZoom, externalTransform]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -250,18 +262,50 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
   };
 
   const handleZoomIn = () => {
-    setScale(prev => Math.min(prev * 1.2, maxZoom));
+    if (disableInteractions) return;
+    
+    const newScale = Math.min(scale * 1.2, maxZoom);
+    setScale(newScale);
+    
+    if (onTransformChange) {
+      onTransformChange({
+        scale: newScale,
+        translateX,
+        translateY
+      });
+    }
   };
 
   const handleZoomOut = () => {
-    setScale(prev => Math.max(prev / 1.2, minZoom));
+    if (disableInteractions) return;
+    
+    const newScale = Math.max(scale / 1.2, minZoom);
+    setScale(newScale);
+    
+    if (onTransformChange) {
+      onTransformChange({
+        scale: newScale,
+        translateX,
+        translateY
+      });
+    }
   };
 
   const handleReset = () => {
+    if (disableInteractions) return;
+    
     setScale(initialZoom);
     setTranslateX(0);
     setTranslateY(0);
     setRotation(0);
+    
+    if (onTransformChange) {
+      onTransformChange({
+        scale: initialZoom,
+        translateX: 0,
+        translateY: 0
+      });
+    }
   };
 
   const handleRotate = () => {
@@ -288,16 +332,27 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 0) { // Left click only
+    if (e.button === 0 && !disableInteractions) { // Left click only
       setIsDragging(true);
       setDragStart({ x: e.clientX - translateX, y: e.clientY - translateY });
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging) {
-      setTranslateX(e.clientX - dragStart.x);
-      setTranslateY(e.clientY - dragStart.y);
+    if (isDragging && !disableInteractions) {
+      const newTranslateX = e.clientX - dragStart.x;
+      const newTranslateY = e.clientY - dragStart.y;
+      setTranslateX(newTranslateX);
+      setTranslateY(newTranslateY);
+      
+      // Notify parent of transform changes
+      if (onTransformChange) {
+        onTransformChange({
+          scale,
+          translateX: newTranslateX,
+          translateY: newTranslateY
+        });
+      }
     }
   };
 
@@ -306,9 +361,21 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
   };
 
   const handleWheel = (e: React.WheelEvent) => {
+    if (disableInteractions) return;
+    
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setScale(prev => Math.max(minZoom, Math.min(maxZoom, prev * delta)));
+    const newScale = Math.max(minZoom, Math.min(maxZoom, scale * delta));
+    setScale(newScale);
+    
+    // Notify parent of transform changes
+    if (onTransformChange) {
+      onTransformChange({
+        scale: newScale,
+        translateX,
+        translateY
+      });
+    }
   };
 
   const handleDicomDownload = () => {
@@ -336,15 +403,21 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
     });
   };
 
+  const effectiveScale = externalTransform ? externalTransform.scale : scale;
+  const effectiveTranslateX = externalTransform ? externalTransform.translateX : translateX;
+  const effectiveTranslateY = externalTransform ? externalTransform.translateY : translateY;
+
+  const attachHandlers = !disableInteractions && !externalTransform;
+
   return (
     <ViewerContainer
       ref={containerRef}
       className={className}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      onWheel={handleWheel}
+      onMouseDown={attachHandlers ? handleMouseDown : undefined}
+      onMouseMove={attachHandlers ? handleMouseMove : undefined}
+      onMouseUp={attachHandlers ? handleMouseUp : undefined}
+      onMouseLeave={attachHandlers ? handleMouseUp : undefined}
+      onWheel={attachHandlers ? handleWheel : undefined}
     >
       {isDicom && inlineDicomViewer ? (
         <DicomViewer
@@ -369,9 +442,9 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
       ) : (
         <>
           <ImageContainer
-            scale={scale}
-            translateX={translateX}
-            translateY={translateY}
+            scale={effectiveScale}
+            translateX={effectiveTranslateX}
+            translateY={effectiveTranslateY}
           >
             <Image
               src={imageUrl}
@@ -385,7 +458,7 @@ const ImageViewer: React.FC<ImageViewerProps> = ({
         </>
       )}
 
-      {showControls && !isDicom && (
+      {showControls && !isDicom && !externalTransform && !disableInteractions && (
         <Controls>
           <ControlButton onClick={handleZoomIn} disabled={scale >= maxZoom}>
             <FaSearchPlus />
