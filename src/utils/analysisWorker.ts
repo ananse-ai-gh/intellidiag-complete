@@ -237,8 +237,10 @@ export class AnalysisCache {
     set(key: string, value: any): void {
         // Remove oldest entries if cache is full
         if (this.cache.size >= this.MAX_CACHE_SIZE) {
-            const firstKey = this.cache.keys().next().value
-            this.cache.delete(firstKey)
+            const firstKey = this.cache.keys().next().value as string | undefined
+            if (typeof firstKey === 'string') {
+                this.cache.delete(firstKey)
+            }
         }
 
         this.cache.set(key, {

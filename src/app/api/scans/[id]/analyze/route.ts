@@ -233,10 +233,15 @@ async function processAnalysisInBackground(
 
         // Get the scan data for storage operations
         const scan = await db.getScanById(scanId);
+        if (!scan) {
+            console.error('❌ Scan not found during background processing:', scanId);
+            // Bail out early; analysis record status will be left as processing/failed by caller
+            return;
+        }
 
         // Upload output images to Supabase Storage if analysis was successful
         let uploadedImageUrls: Record<string, string> = {};
-        if (analysisResult && scan?.created_by) {
+        if (analysisResult && scan.created_by) {
             try {
                 console.log('📤 Uploading analysis output images to Supabase Storage...');
 
@@ -330,7 +335,7 @@ async function processAnalysisInBackground(
 
         if (targetAnalysis) {
             const updateData = {
-                status: 'completed',
+                status: 'completed' as 'completed',
                 confidence: analysisResult?.overall_confidence || analysisResult?.confidence || 0,
                 result: {
                     detected_case: analysisResult?.detected_case || analysisResult?.findings || '',
@@ -399,7 +404,7 @@ async function processAnalysisInBackground(
         const targetAnalysis = analyses.find(a => a.image_index === imageIndex);
         if (targetAnalysis) {
             await db.updateAnalysis(targetAnalysis.id, {
-                status: 'failed',
+                status: 'failed' as 'failed',
                 result: {
                     error: error instanceof Error ? error.message : 'Analysis failed'
                 }

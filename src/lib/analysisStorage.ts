@@ -147,7 +147,7 @@ class SupabaseAnalysisStorage implements AnalysisImageStorage {
             }
 
             // Delete all files in the directory
-            const filePaths = files.map(file => `${basePath}/${file.name}`);
+            const filePaths = files.map((file: { name: string }) => `${basePath}/${file.name}`);
 
             if (filePaths.length > 0) {
                 const { error: deleteError } = await this.supabase.storage

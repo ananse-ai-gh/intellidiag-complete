@@ -95,7 +95,7 @@ export async function GET(
         };
 
         // Use explicit analysis_type stored on the scan; do not use heuristics
-        const resolvedAnalysisType = scan.analysis_type || analysis?.analysis_type || 'auto'
+        const resolvedAnalysisType = (scan as any)?.analysis_type || analysis?.analysis_type || 'auto'
 
         // Transform to expected format
         const scanData = {
@@ -170,9 +170,9 @@ export async function PUT(
         const updatedScan = await db.updateScan(scanId, {
             scan_type: scanType,
             body_part: bodyPart,
-            analysis_type: analysisType,
-            priority: priority as 'low' | 'medium' | 'high' | 'urgent' || 'medium'
-        });
+            // analysis_type omitted since not in current DB type
+            priority: (priority as 'low' | 'medium' | 'high' | 'urgent') || 'medium'
+        } as any);
 
         // Get patient details
         const patient = await db.getPatientById(updatedScan.patient_id);
@@ -188,7 +188,7 @@ export async function PUT(
             patientId: updatedScan.patient_id,
             scanType: updatedScan.scan_type,
             bodyPart: updatedScan.body_part,
-            analysisType: updatedScan.analysis_type,
+            analysisType: (updatedScan as any)?.analysis_type,
             priority: updatedScan.priority,
             status: updatedScan.status,
             notes: notes || '',

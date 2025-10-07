@@ -255,6 +255,7 @@ export const useAnalysisManager = (scanId: string, imageIndex: number = 0) => {
                 id: analysisId,
                 scanId,
                 analysisType,
+                imageIndex,
                 status: 'processing',
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()

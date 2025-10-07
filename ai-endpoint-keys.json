@@ -1,0 +1,74 @@
+{
+  "timestamp": "2025-10-05T02:29:46.506Z",
+  "summary": {
+    "totalTests": 5,
+    "successful": 5,
+    "failed": 0
+  },
+  "results": [
+    {
+      "endpoint": "Lung Analysis",
+      "imagePath": "SCAN-1758571903452-PTEFGAMPW.jpg",
+      "status": 200,
+      "processingTime": 5208,
+      "keys": [
+        "combined_image",
+        "detected_case",
+        "overall_confidence",
+        "confidence_scores",
+        "scan_type",
+        "medical_note"
+      ]
+    },
+    {
+      "endpoint": "MRI to CT Conversion",
+      "imagePath": "SCAN-1758571903452-PTEFGAMPW.jpg",
+      "status": 200,
+      "processingTime": 3757,
+      "keys": [
+        "ct_to_mri",
+        "mri_to_ct",
+        "ssim"
+      ]
+    },
+    {
+      "endpoint": "Lung Analysis",
+      "imagePath": "SCAN-1758572018960-U4MM3YBHY.jpg",
+      "status": 200,
+      "processingTime": 1356,
+      "keys": [
+        "combined_image",
+        "detected_case",
+        "overall_confidence",
+        "confidence_scores",
+        "scan_type",
+        "medical_note"
+      ]
+    },
+    {
+      "endpoint": "Brain Tumor Analysis",
+      "imagePath": "SCAN-1758572018960-U4MM3YBHY.jpg",
+      "status": 200,
+      "processingTime": 1919,
+      "keys": [
+        "combined_image",
+        "detected_case",
+        "overall_confidence",
+        "confidence_scores",
+        "scan_type",
+        "medical_note"
+      ]
+    },
+    {
+      "endpoint": "MRI to CT Conversion",
+      "imagePath": "SCAN-1758572018960-U4MM3YBHY.jpg",
+      "status": 200,
+      "processingTime": 3085,
+      "keys": [
+        "ct_to_mri",
+        "mri_to_ct",
+        "ssim"
+      ]
+    }
+  ]
+}

@@ -1,11 +1,11 @@
 import { aiAnalysisService } from '../services/aiAnalysisService'
-import fetch from 'node-fetch'
+// Using global fetch available in Node 18+
 
 // Test script to test all AI endpoints with a chest X-ray image
 async function testAllAIEndpoints() {
     console.log("🧪 Starting comprehensive AI endpoint tests...")
     console.log("📋 Testing with chest X-ray image (lung abnormalities detected)")
-    console.log("=" * 80)
+    console.log("=".repeat(80))
 
     // Test image URL - you'll need to replace this with the actual image URL
     const imageUrl = 'https://example.com/chest-xray.jpg' // Replace with actual image URL
@@ -109,13 +109,13 @@ async function testAllAIEndpoints() {
             })
         }
 
-        console.log("-" * 60)
+        console.log("-".repeat(60))
     }
 
     // Summary Report
-    console.log("\n" + "=" * 80)
+    console.log("\n" + "=".repeat(80))
     console.log("📊 COMPREHENSIVE TEST RESULTS SUMMARY")
-    console.log("=" * 80)
+    console.log("=".repeat(80))
 
     const successCount = results.filter(r => r.status === 'success').length
     const failedCount = results.filter(r => r.status === 'failed').length
@@ -162,10 +162,10 @@ async function testWithActualImage(imageUrl: string) {
             throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`)
         }
 
-        const imageBuffer = await response.buffer()
-        const imageFile = new File([imageBuffer], 'chest_xray.jpg', { type: 'image/jpeg' })
+        const arrayBuffer = await response.arrayBuffer()
+        const imageFile = new File([arrayBuffer], 'chest_xray.jpg', { type: 'image/jpeg' })
 
-        console.log(`✅ Image loaded successfully (${imageBuffer.length} bytes)`)
+        console.log(`✅ Image loaded successfully (${arrayBuffer.byteLength} bytes)`)
 
         // Test lung tumor analysis specifically (most relevant for chest X-ray)
         console.log(`\n🔍 Testing Lung Tumor Analysis with actual image...`)

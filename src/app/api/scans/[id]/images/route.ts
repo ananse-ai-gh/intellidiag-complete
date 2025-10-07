@@ -423,7 +423,7 @@ export async function DELETE(
         console.log('✅ Image deleted from database successfully')
 
         // Reindex remaining images to maintain sequential order
-        const remainingImages = scanImages.filter((_, index) => index !== imageIndex)
+        const remainingImages = scanImages.filter((img: any, index: number) => index !== imageIndex)
         console.log('🔄 Reindexing', remainingImages.length, 'remaining images')
 
         try {

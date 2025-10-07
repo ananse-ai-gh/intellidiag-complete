@@ -76,7 +76,7 @@ const CloseButton = styled.button`
   &:hover { background: rgba(255, 255, 255, 0.05); }
 `
 
-const StatusHeader = styled.div`
+const StatusHeader = styled.div<{ $status: string }>`
   display: flex;
   align-items: center;
   gap: 12px;
@@ -100,7 +100,7 @@ const StatusHeader = styled.div`
   }};
 `
 
-const StatusIcon = styled.div`
+const StatusIcon = styled.div<{ $status: string }>`
   font-size: 20px;
   color: ${props => {
     switch (props.$status) {

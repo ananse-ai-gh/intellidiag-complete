@@ -29,19 +29,21 @@ export class AIAnalysisService {
       const data = response.data;
 
       // Parse and convert confidence scores to numbers
-      let parsedConfidenceScores = data.confidence_scores;
+      let parsedConfidenceScores: Record<string, number> | Array<Record<string, number>> = data.confidence_scores;
       if (Array.isArray(parsedConfidenceScores)) {
-        parsedConfidenceScores = parsedConfidenceScores.map(score => {
-          const parsed = {};
-          Object.keys(score).forEach(key => {
-            parsed[key] = parseFloat(score[key]) || 0;
+        parsedConfidenceScores = parsedConfidenceScores.map((score: Record<string, unknown>) => {
+          const parsed: Record<string, number> = {};
+          Object.keys(score).forEach((key: string) => {
+            const value = (score as Record<string, unknown>)[key];
+            parsed[key] = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
           });
           return parsed;
         });
       } else if (typeof parsedConfidenceScores === 'object' && parsedConfidenceScores !== null) {
-        const parsed = {};
-        Object.keys(parsedConfidenceScores).forEach(key => {
-          parsed[key] = parseFloat(parsedConfidenceScores[key]) || 0;
+        const parsed: Record<string, number> = {};
+        Object.keys(parsedConfidenceScores as Record<string, unknown>).forEach((key: string) => {
+          const value = (parsedConfidenceScores as Record<string, unknown>)[key];
+          parsed[key] = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
         });
         parsedConfidenceScores = parsed;
       }
@@ -79,19 +81,21 @@ export class AIAnalysisService {
       const data = response.data;
 
       // Parse and convert confidence scores to numbers
-      let parsedConfidenceScores = data.confidence_scores;
+      let parsedConfidenceScores: Record<string, number> | Array<Record<string, number>> = data.confidence_scores;
       if (Array.isArray(parsedConfidenceScores)) {
-        parsedConfidenceScores = parsedConfidenceScores.map(score => {
-          const parsed = {};
-          Object.keys(score).forEach(key => {
-            parsed[key] = parseFloat(score[key]) || 0;
+        parsedConfidenceScores = parsedConfidenceScores.map((score: Record<string, unknown>) => {
+          const parsed: Record<string, number> = {};
+          Object.keys(score).forEach((key: string) => {
+            const value = (score as Record<string, unknown>)[key];
+            parsed[key] = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
           });
           return parsed;
         });
       } else if (typeof parsedConfidenceScores === 'object' && parsedConfidenceScores !== null) {
-        const parsed = {};
-        Object.keys(parsedConfidenceScores).forEach(key => {
-          parsed[key] = parseFloat(parsedConfidenceScores[key]) || 0;
+        const parsed: Record<string, number> = {};
+        Object.keys(parsedConfidenceScores as Record<string, unknown>).forEach((key: string) => {
+          const value = (parsedConfidenceScores as Record<string, unknown>)[key];
+          parsed[key] = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
         });
         parsedConfidenceScores = parsed;
       }
@@ -210,19 +214,21 @@ export class AIAnalysisService {
       });
 
       // Parse and convert confidence scores to numbers
-      let parsedConfidenceScores = data.confidence_scores;
+      let parsedConfidenceScores: Record<string, number> | Array<Record<string, number>> = data.confidence_scores;
       if (Array.isArray(parsedConfidenceScores)) {
-        parsedConfidenceScores = parsedConfidenceScores.map(score => {
-          const parsed = {};
-          Object.keys(score).forEach(key => {
-            parsed[key] = parseFloat(score[key]) || 0;
+        parsedConfidenceScores = parsedConfidenceScores.map((score: Record<string, unknown>) => {
+          const parsed: Record<string, number> = {};
+          Object.keys(score).forEach((key: string) => {
+            const value = (score as Record<string, unknown>)[key];
+            parsed[key] = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
           });
           return parsed;
         });
       } else if (typeof parsedConfidenceScores === 'object' && parsedConfidenceScores !== null) {
-        const parsed = {};
-        Object.keys(parsedConfidenceScores).forEach(key => {
-          parsed[key] = parseFloat(parsedConfidenceScores[key]) || 0;
+        const parsed: Record<string, number> = {};
+        Object.keys(parsedConfidenceScores as Record<string, unknown>).forEach((key: string) => {
+          const value = (parsedConfidenceScores as Record<string, unknown>)[key];
+          parsed[key] = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
         });
         parsedConfidenceScores = parsed;
       }

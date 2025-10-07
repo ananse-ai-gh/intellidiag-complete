@@ -146,7 +146,6 @@ export async function POST(request: NextRequest) {
                 patient_id: patientId,
                 scan_type: scanType,
                 body_part: bodyPart,
-                analysis_type: analysisType || 'auto',
                 priority: (priority as 'low' | 'medium' | 'high' | 'urgent') || 'medium',
                 status: 'pending' as 'pending' | 'processing' | 'completed' | 'failed',
                 file_path: imagePath,
@@ -154,7 +153,7 @@ export async function POST(request: NextRequest) {
                 file_size: (filesToUpload[0] as File).size,
                 mime_type: (filesToUpload[0] as File).type,
                 created_by: user.id
-            };
+            } as any;
 
             console.log('📝 Creating scan with data:', scanData);
             scan = await db.createScan(scanData);
@@ -169,9 +168,8 @@ export async function POST(request: NextRequest) {
                     findings: '',
                     recommendations: '',
                     notes: notes || '',
-                    retry_count: 0,
-                    analysis_type: analysisType || 'auto'
-                });
+                    retry_count: 0
+                } as any);
                 console.log('✅ Scan updated with additional fields');
             } catch (updateError) {
                 console.warn('⚠️ Warning: Could not update scan with additional fields:', updateError);
@@ -229,7 +227,7 @@ export async function POST(request: NextRequest) {
             patientId: scan.patient_id,
             scanType: scan.scan_type,
             bodyPart: scan.body_part,
-            analysisType: scan.analysis_type,
+            analysisType: (analysisType as string) || 'auto',
             priority: scan.priority,
             status: scan.status,
             notes: notes || '',

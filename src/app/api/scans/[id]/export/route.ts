@@ -76,7 +76,8 @@ export async function GET(
                 priority: scan.priority,
                 status: scan.status,
                 createdAt: scan.created_at,
-                analysisType: scan.analysis_type
+                // Fallback: use latest analysis type if not present on scan row
+                analysisType: (analysis && analysis.analysis_type) || (scan as any).analysis_type || 'auto'
             },
             patient: patient ? {
                 firstName: patient.first_name,
