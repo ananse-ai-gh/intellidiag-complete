@@ -24,7 +24,7 @@ interface ScanFormData {
   priority: string;
   scanDate: string;
   selectedFile: File | null; // first file for preview/label
-  selectedAIServices: string[];
+  analysisType: string;
   createNewPatient: boolean;
   selectedPatientId: string;
 }
@@ -492,7 +492,7 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
     priority: 'medium',
     scanDate: new Date().toISOString().split('T')[0],
     selectedFile: null,
-    selectedAIServices: [],
+    analysisType: 'auto',
     createNewPatient: false,
     selectedPatientId: ''
   });
@@ -589,12 +589,10 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
     }
   };
 
-  const handleServiceToggle = (serviceId: string) => {
+  const handleServiceSelect = (serviceId: string) => {
     setFormData(prev => ({
       ...prev,
-      selectedAIServices: prev.selectedAIServices.includes(serviceId)
-        ? prev.selectedAIServices.filter(id => id !== serviceId)
-        : [...prev.selectedAIServices, serviceId]
+      analysisType: serviceId
     }));
   };
 
@@ -630,8 +628,8 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
       return;
     }
 
-    if (formData.selectedAIServices.length === 0) {
-      alert('Please select at least one AI analysis service');
+    if (!formData.analysisType) {
+      alert('Please select an AI analysis service');
       return;
     }
 
@@ -701,7 +699,7 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
       uploadFormData.append('scanType', formData.scanType);
       uploadFormData.append('bodyPart', formData.bodyPart);
       uploadFormData.append('priority', formData.priority);
-      uploadFormData.append('analysisType', formData.selectedAIServices.join(','));
+      uploadFormData.append('analysisType', formData.analysisType || 'auto');
       uploadFormData.append('scanDate', formData.scanDate);
 
       // Simulate upload progress
@@ -745,7 +743,7 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
           scanDate: formData.scanDate,
           createdAt: new Date().toISOString(),
           imagePath: result.data.imagePath,
-          selectedAIServices: formData.selectedAIServices
+          analysisType: formData.analysisType
         };
 
         onScanCreated(newScan);
@@ -765,7 +763,7 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
           priority: 'medium',
           scanDate: new Date().toISOString().split('T')[0],
           selectedFile: null,
-          selectedAIServices: [],
+          analysisType: 'auto',
           createNewPatient: false,
           selectedPatientId: ''
         });
@@ -1027,13 +1025,13 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
             <ServicesGrid>
               {AI_SERVICES.map(service => {
                 const IconComponent = service.icon;
-                const isSelected = formData.selectedAIServices.includes(service.id);
+                const isSelected = formData.analysisType === service.id;
                 
                 return (
                   <ServiceCard
                     key={service.id}
                     isSelected={isSelected}
-                    onClick={() => !isUploading && handleServiceToggle(service.id)}
+                    onClick={() => !isUploading && handleServiceSelect(service.id)}
                   >
                     <ServiceIcon color={service.color}>
                       <IconComponent />
@@ -1060,7 +1058,7 @@ const ScanCreationModal: React.FC<ScanCreationModalProps> = ({
             </Button>
             <Button
               type="submit"
-              disabled={isUploading || !formData.selectedFile || formData.selectedAIServices.length === 0}
+              disabled={isUploading || !formData.selectedFile || !formData.analysisType}
             >
               {isUploading ? (
                 <>

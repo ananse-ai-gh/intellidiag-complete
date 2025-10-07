@@ -61,6 +61,42 @@ export async function GET(
         const analyses = await db.getAnalysesByScanId(scanId);
         const analysis = analyses[0];
 
+        // Determine analysis type based on scan type and body part
+        const getAnalysisType = (scanType: string, bodyPart: string): string => {
+            const scanTypeLower = scanType.toLowerCase();
+            const bodyPartLower = bodyPart.toLowerCase();
+
+            // Brain tumor analysis
+            if (bodyPartLower.includes('brain') || bodyPartLower.includes('head')) {
+                return 'brain_tumor';
+            }
+
+            // Breast cancer detection
+            if (bodyPartLower.includes('breast') || bodyPartLower.includes('mammo')) {
+                return 'breast_cancer';
+            }
+
+            // Lung tumor analysis
+            if (bodyPartLower.includes('lung') || bodyPartLower.includes('chest') || bodyPartLower.includes('thorax')) {
+                return 'lung_tumor';
+            }
+
+            // CT to MRI conversion
+            if (scanTypeLower === 'ct' && (bodyPartLower.includes('brain') || bodyPartLower.includes('head'))) {
+                return 'ct_to_mri';
+            }
+
+            // MRI to CT conversion
+            if (scanTypeLower === 'mri' && (bodyPartLower.includes('brain') || bodyPartLower.includes('head'))) {
+                return 'mri_to_ct';
+            }
+
+            return 'auto';
+        };
+
+        // Use explicit analysis_type stored on the scan; do not use heuristics
+        const resolvedAnalysisType = scan.analysis_type || analysis?.analysis_type || 'auto'
+
         // Transform to expected format
         const scanData = {
             id: scan.id,
@@ -79,6 +115,7 @@ export async function GET(
             patientIdNumber: patient?.id || '',
             uploadedByFirstName: 'User',
             uploadedByLastName: 'Name',
+            analysisType: resolvedAnalysisType,
             aiStatus: analysis?.status || 'pending',
             confidence: analysis?.confidence || 0,
             aiFindings: analysis?.result?.findings || ''
@@ -119,7 +156,7 @@ export async function PUT(
 
         const scanId = params.id;
         const body = await request.json();
-        const { scanType, bodyPart, priority, notes, scanDate } = body;
+        const { scanType, bodyPart, analysisType, priority, notes, scanDate } = body;
 
         // Validate required fields
         if (!scanType || !bodyPart) {
@@ -133,6 +170,7 @@ export async function PUT(
         const updatedScan = await db.updateScan(scanId, {
             scan_type: scanType,
             body_part: bodyPart,
+            analysis_type: analysisType,
             priority: priority as 'low' | 'medium' | 'high' | 'urgent' || 'medium'
         });
 
@@ -150,6 +188,7 @@ export async function PUT(
             patientId: updatedScan.patient_id,
             scanType: updatedScan.scan_type,
             bodyPart: updatedScan.body_part,
+            analysisType: updatedScan.analysis_type,
             priority: updatedScan.priority,
             status: updatedScan.status,
             notes: notes || '',

@@ -130,6 +130,44 @@ export interface Database {
                     updated_at?: string
                 }
             }
+            scan_images: {
+                Row: {
+                    id: string
+                    scan_id: string
+                    file_path: string
+                    file_name: string
+                    original_name: string
+                    file_size: number | null
+                    mime_type: string | null
+                    image_index: number
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    scan_id: string
+                    file_path: string
+                    file_name: string
+                    original_name: string
+                    file_size?: number | null
+                    mime_type?: string | null
+                    image_index?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    scan_id?: string
+                    file_path?: string
+                    file_name?: string
+                    original_name?: string
+                    file_size?: number | null
+                    mime_type?: string | null
+                    image_index?: number
+                    created_at?: string
+                    updated_at?: string
+                }
+            }
             scans: {
                 Row: {
                     id: string
@@ -202,6 +240,7 @@ export interface Database {
                 Row: {
                     id: string
                     scan_id: string
+                    image_index: number
                     analysis_type: string
                     status: 'pending' | 'processing' | 'completed' | 'failed' | 'archived' | 'deleted'
                     result: any
@@ -212,7 +251,8 @@ export interface Database {
                 Insert: {
                     id?: string
                     scan_id: string
-                    analysis_type: string
+                    image_index?: number
+                    analysis_type?: string
                     status?: 'pending' | 'processing' | 'completed' | 'failed'
                     result?: any
                     confidence?: number
@@ -222,6 +262,7 @@ export interface Database {
                 Update: {
                     id?: string
                     scan_id?: string
+                    image_index?: number
                     analysis_type?: string
                     status?: 'pending' | 'processing' | 'completed' | 'failed'
                     result?: any
@@ -260,38 +301,6 @@ export interface Database {
                     access_count?: number
                     created_at?: string
                     last_accessed?: string | null
-                }
-            }
-            annotations: {
-                Row: {
-                    id: string
-                    scan_id: string
-                    image_index: number
-                    annotation_type: 'shape' | 'text' | 'measurement'
-                    annotation_data: any
-                    created_by: string
-                    created_at: string
-                    updated_at: string
-                }
-                Insert: {
-                    id?: string
-                    scan_id: string
-                    image_index?: number
-                    annotation_type: 'shape' | 'text' | 'measurement'
-                    annotation_data: any
-                    created_by: string
-                    created_at?: string
-                    updated_at?: string
-                }
-                Update: {
-                    id?: string
-                    scan_id?: string
-                    image_index?: number
-                    annotation_type?: 'shape' | 'text' | 'measurement'
-                    annotation_data?: any
-                    created_by?: string
-                    created_at?: string
-                    updated_at?: string
                 }
             }
         }

@@ -146,6 +146,7 @@ export async function POST(request: NextRequest) {
                 patient_id: patientId,
                 scan_type: scanType,
                 body_part: bodyPart,
+                analysis_type: analysisType || 'auto',
                 priority: (priority as 'low' | 'medium' | 'high' | 'urgent') || 'medium',
                 status: 'pending' as 'pending' | 'processing' | 'completed' | 'failed',
                 file_path: imagePath,
@@ -168,11 +169,37 @@ export async function POST(request: NextRequest) {
                     findings: '',
                     recommendations: '',
                     notes: notes || '',
-                    retry_count: 0
+                    retry_count: 0,
+                    analysis_type: analysisType || 'auto'
                 });
                 console.log('✅ Scan updated with additional fields');
             } catch (updateError) {
                 console.warn('⚠️ Warning: Could not update scan with additional fields:', updateError);
+                // Don't fail the entire operation for this
+            }
+
+            // Create initial image record in scan_images table
+            try {
+                const serverSupabase = createServerSupabaseClient();
+                const { error: imageRecordError } = await serverSupabase
+                    .from('scan_images')
+                    .insert({
+                        scan_id: scan.id,
+                        file_path: imagePath,
+                        file_name: (filesToUpload[0] as File).name,
+                        original_name: (filesToUpload[0] as File).name,
+                        file_size: (filesToUpload[0] as File).size,
+                        mime_type: (filesToUpload[0] as File).type,
+                        image_index: 0
+                    });
+
+                if (imageRecordError) {
+                    console.warn('⚠️ Warning: Could not create initial image record:', imageRecordError);
+                } else {
+                    console.log('✅ Initial image record created successfully');
+                }
+            } catch (imageError) {
+                console.warn('⚠️ Warning: Could not create initial image record:', imageError);
                 // Don't fail the entire operation for this
             }
 
@@ -202,6 +229,7 @@ export async function POST(request: NextRequest) {
             patientId: scan.patient_id,
             scanType: scan.scan_type,
             bodyPart: scan.body_part,
+            analysisType: scan.analysis_type,
             priority: scan.priority,
             status: scan.status,
             notes: notes || '',

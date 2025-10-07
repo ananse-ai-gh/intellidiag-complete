@@ -2,8 +2,12 @@
 
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import styled from 'styled-components'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import ImageViewer from '@/components/ImageViewer'
+import AnalysisResultsDisplay from '@/components/AnalysisResultsDisplay'
+import ExportModal from '@/components/ExportModal'
+import { useAnalysisManager } from '@/hooks/useAnalysisManager'
+import { generateAndPrintReport, AnalysisReportData } from '@/utils/pdfGenerator'
 import { 
   FaCogs, FaDownload, FaPlay, FaSpinner, 
   FaPen, FaSquare, FaFont, FaHands, FaComment, FaEllipsisV,
@@ -14,9 +18,10 @@ import {
   FaPaintBrush, FaWind, FaSeedling,
   FaFillDrip, FaTooth, FaIntercom, FaCut,
   FaRulerCombined, FaRoute,
-  FaUndo, FaRedo, FaBookmark, FaCheckCircle,
+  FaBookmark, FaCheckCircle,
   FaTimesCircle, FaFileExport, FaEyeSlash, FaSlidersH,
-  FaChevronDown, FaChevronRight, FaChevronLeft, FaBars, FaTimes
+  FaChevronDown, FaChevronRight, FaChevronLeft, FaBars, FaTimes,
+  FaClock, FaFileMedical, FaUndo, FaRedo, FaSave, FaTrashAlt
 } from 'react-icons/fa'
 import { SmartThumbnail, isDicomFile } from '@/utils/fileUtils'
 import api, { scansAPI } from '@/services/api'
@@ -33,15 +38,6 @@ const ContentArea = styled.div`
   display: flex;
   flex: 1;
   overflow: hidden;
-`
-
-// Tools sidebar on the left
-const ToolsSidebar = styled.div`
-  width: 280px;
-  background: #1a1a1a;
-  border-right: 1px solid #2a2a2a;
-  display: flex;
-  flex-direction: column;
 `
 
 // Main viewer area
@@ -75,17 +71,23 @@ const ViewerArea = styled.div`
 
 // Image viewer container (fixed width to prevent growth when panels toggle)
 const ImageViewerArea = styled.div`
-  flex: 0 0 960px; /* fixed width */
-  width: 960px; /* fixed width */
-  max-width: 100%; /* allow shrink on small screens */
+  /* Fill the entire ViewerArea width */
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 100%;
+  /* fill container height */
+  max-height: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-width: 0; /* Prevent flex item from growing beyond container */
 
   @media (max-width: 1100px) {
-    flex: 1 1 auto; /* fall back to fluid on small screens */
+    flex: 1 1 auto;
     width: 100%;
+    max-height: 100%;
+    height: 100%;
   }
 `
 
@@ -177,10 +179,24 @@ const AddImageButton = styled.button`
   flex-shrink: 0;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   
-  &:hover {
+  &:hover:not(:disabled) {
     background: rgba(6, 148, 251, 0.2);
     transform: scale(1.05);
     box-shadow: 0 0 15px rgba(6, 148, 251, 0.4);
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 `
 
@@ -263,31 +279,6 @@ const ImageOverlay = styled.div`
   bottom: 0;
   pointer-events: none;
   z-index: 10;
-`
-
-const AnnotationBox = styled.div<{ $x: number; $y: number; $width: number; $height: number }>`
-  position: absolute;
-  left: ${props => props.$x}px;
-  top: ${props => props.$y}px;
-  width: ${props => props.$width}px;
-  height: ${props => props.$height}px;
-  border: 2px solid #0694fb;
-  background: rgba(6, 148, 251, 0.1);
-  pointer-events: auto;
-  cursor: move;
-`
-
-const AnnotationText = styled.div`
-  position: absolute;
-  top: -30px;
-  left: 0;
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  max-width: 300px;
-  line-height: 1.4;
 `
 
 const MeasurementLine = styled.div<{ $x1: number; $y1: number; $x2: number; $y2: number }>`
@@ -390,4815 +381,1894 @@ const ModelTag = styled.div<{ $color: string }>`
   display: inline-block;
 `
 
-const ScanDetails = styled.div`
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 16px;
-`
-
-const ScanTitle = styled.div`
-  font-size: 16px;
-  font-weight: 600;
-  color: white;
-  margin-bottom: 4px;
-`
-
-const ScanSubtitle = styled.div`
-  font-size: 12px;
-  color: #8aa;
-`
-
-const ConfidenceSection = styled.div`
-  margin-bottom: 16px;
-`
-
-const ConfidenceLabel = styled.div`
-  font-size: 14px;
-  color: #8aa;
-  margin-bottom: 8px;
-`
-
-const ConfidenceScore = styled.div`
-  font-size: 32px;
-  font-weight: 700;
-  color: #00ff88;
-  margin-bottom: 12px;
-`
-
-const ConfidenceBreakdown = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`
-
-const ConfidenceItem = styled.div`
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: #8aa;
-`
-
-const ResultsButton = styled.button`
-  width: 100%;
-  background: #0694fb;
-  border: none;
-  color: white;
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-bottom: 16px;
-  transition: all 0.2s ease;
-  
-  &:hover {
-    background: #0582d9;
-    transform: translateY(-1px);
-  }
-`
-
 const ResultsText = styled.div`
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  padding: 12px;
   font-size: 13px;
-  line-height: 1.6;
   color: #ccc;
-  max-height: 200px;
-  overflow-y: auto;
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 `
 
-// New styled components for professional left panel
-const CollapsibleToolsSidebar = styled.div<{ $collapsed: boolean }>`
-  width: 280px; /* fixed width so viewer origin stays stable */
-  background: #1a1a1a;
-  border-right: 1px solid #2a2a2a;
-  display: flex;
-  flex-direction: column;
-  /* no width transition to avoid shifting the viewer */
-  overflow: hidden;
-`
-
-const PanelToggleButton = styled.button`
-  width: 40px;
-  height: 40px;
-  background: #0694fb;
-  border: none;
-  border-radius: 8px;
-  color: white;
-  cursor: pointer;
+const BackButton = styled.button`
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  z-index: 1100;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 12px 10px;
-  transition: all 0.2s ease;
-  
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(20,20,20,0.8) 0%, rgba(12,12,12,0.8) 100%);
+  color: #e6f2ff;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+
   &:hover {
-    background: #0582d9;
-    transform: scale(1.05);
+    transform: translateY(-1px);
+    border-color: rgba(6,148,251,0.5);
+    box-shadow: 0 10px 22px rgba(6,148,251,0.22), inset 0 1px 0 rgba(255,255,255,0.08);
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  @media (max-width: 768px) {
+    width: 40px;
+    height: 40px;
+    top: max(10px, env(safe-area-inset-top));
+    left: max(10px, env(safe-area-inset-left));
+    border-radius: 8px;
   }
 `
 
-const AccordionSection = styled.div`
-  border-bottom: 1px solid #2a2a2a;
-`
-
-const AccordionHeader = styled.button`
-  width: 100%;
-  background: transparent;
-  border: none;
-  padding: 16px;
+const ActionButton = styled.button<{ $variant?: 'primary' | 'secondary' | 'danger' }>`
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
+  gap: 6px;
+  border: none;
+  
+  ${props => {
+    switch (props.$variant) {
+      case 'primary':
+        return `
+          background: #0694fb;
+          color: white;
+          
+          &:hover {
+            background: #0582d9;
+            transform: scale(1.05);
+          }
+        `
+      case 'danger':
+        return `
+          background: #f44336;
+          color: white;
+          
+          &:hover {
+            background: #d32f2f;
+            transform: scale(1.05);
+          }
+        `
+      default:
+        return `
+          background: transparent;
+          color: #8aa;
+          border: 1px solid #2a2a2a;
+          
+          &:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+          }
+        `
+    }
+  }}
+`
+
+// Analysis Results Panel Components
+const AnalysisHeader = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+`
+
+const AnalysisTitle = styled.div`
+  font-size: 18px;
+  font-weight: 700;
   color: white;
+  display: flex;
+  align-items: center;
+`
+
+const AnalysisSubtitle = styled.div`
+  font-size: 12px;
+  color: #8aa;
+  font-weight: 400;
+`
+
+const StatusIndicator = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+const StatusBadge = styled.div<{ $status: string }>`
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 6px;
+    font-size: 12px;
+  font-weight: 600;
+  background: ${props => {
+    switch (props.$status) {
+      case 'completed': return 'rgba(76, 175, 80, 0.1)'
+      case 'processing': return 'rgba(255, 193, 7, 0.1)'
+      case 'failed': return 'rgba(244, 67, 54, 0.1)'
+      case 'pending': return 'rgba(255, 152, 0, 0.1)'
+      default: return 'rgba(255, 255, 255, 0.05)'
+    }
+  }};
+  border: 1px solid ${props => {
+    switch (props.$status) {
+      case 'completed': return 'rgba(76, 175, 80, 0.3)'
+      case 'processing': return 'rgba(255, 193, 7, 0.3)'
+      case 'failed': return 'rgba(244, 67, 54, 0.3)'
+      case 'pending': return 'rgba(255, 152, 0, 0.3)'
+      default: return 'rgba(255, 255, 255, 0.1)'
+    }
+  }};
+  color: ${props => {
+    switch (props.$status) {
+      case 'completed': return '#4CAF50'
+      case 'processing': return '#ffc107'
+      case 'failed': return '#f44336'
+      case 'pending': return '#ff9800'
+      default: return '#8aa'
+    }
+  }};
+`
+
+const ProgressBar = styled.div`
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+`
+
+const ProgressFill = styled.div<{ $progress: number }>`
+  height: 100%;
+  width: ${props => Math.max(0, Math.min(100, props.$progress))}%;
+  background: linear-gradient(90deg, #0694fb, #4CAF50);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+`
+
+const ProgressMeta = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #8aa;
+`
+
+const StageChips = styled.div`
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+`
+
+const StageChip = styled.div<{ $active?: boolean }>`
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 10px;
+  border: 1px solid ${props => props.$active ? 'rgba(6, 148, 251, 0.6)' : 'rgba(255, 255, 255, 0.15)'};
+  color: ${props => props.$active ? '#fff' : '#8aa'};
+  background: ${props => props.$active ? 'rgba(6, 148, 251, 0.18)' : 'transparent'};
+`
+
+const ConfidenceSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+  
+const ConfidenceLabel = styled.div`
+  font-size: 12px;
+    color: #8aa;
+  font-weight: 500;
+`
+
+const ConfidenceScore = styled.div`
+  font-size: 24px;
+  font-weight: 700;
+      color: white;
+`
+
+const ConfidenceBar = styled.div`
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+`
+
+const ConfidenceFill = styled.div<{ $percentage: number }>`
+  height: 100%;
+  width: ${props => props.$percentage}%;
+  background: ${props => {
+    if (props.$percentage >= 90) return 'linear-gradient(90deg, #4CAF50, #8BC34A)'
+    if (props.$percentage >= 75) return 'linear-gradient(90deg, #8BC34A, #CDDC39)'
+    if (props.$percentage >= 60) return 'linear-gradient(90deg, #CDDC39, #FFC107)'
+    if (props.$percentage >= 40) return 'linear-gradient(90deg, #FFC107, #FF9800)'
+    return 'linear-gradient(90deg, #FF9800, #f44336)'
+  }};
+  border-radius: 4px;
+  transition: width 0.3s ease;
+`
+
+const ConfidenceDescription = styled.div`
+  font-size: 11px;
+  color: #8aa;
+  font-weight: 500;
+`
+
+const FindingsSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+const FindingsTitle = styled.div`
   font-size: 14px;
   font-weight: 600;
-  transition: background-color 0.2s ease;
-  
-  &:hover {
-    background: rgba(255, 255, 255, 0.05);
-  }
-`
-
-const AccordionIcon = styled.div`
-  transition: transform 0.3s ease;
-  transform: ${props => props.className?.includes('expanded') ? 'rotate(90deg)' : 'rotate(0deg)'};
-`
-
-const AccordionContent = styled.div<{ $expanded: boolean }>`
-  max-height: ${props => props.$expanded ? '1000px' : '0'};
-  overflow: hidden;
-  transition: max-height 0.3s ease;
-  background: rgba(0, 0, 0, 0.1);
-`
-
-const ToolGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(40px, 40px));
-  gap: 8px;
-  padding: 12px 16px;
-  align-items: start;
-  justify-content: start;
-`
-
-const CompactToolGrid = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px 16px;
-  align-items: start;
-`
-
-const InputGroup = styled.div`
-  padding: 12px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-`
-
-const LabeledInput = styled.div`
+  color: white;
   display: flex;
   align-items: center;
+`
+
+const FindingsContent = styled.div`
+  font-size: 13px;
+  color: #ccc;
+  line-height: 1.5;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+`
+
+const RecommendationsSection = styled.div`
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  margin-bottom: 8px;
+`
+
+const RecommendationsTitle = styled.div`
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  display: flex;
+  align-items: center;
+`
+
+const RecommendationsContent = styled.div`
+  font-size: 13px;
+  color: #ccc;
+  line-height: 1.5;
+  background: rgba(76, 175, 80, 0.05);
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(76, 175, 80, 0.2);
+`
+
+const LLMNotesSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+const LLMNotesTitle = styled.div`
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  display: flex;
+  align-items: center;
+`
+
+const LLMNotesContent = styled.div`
+  font-size: 13px;
+  color: #e8f5e8;
+  line-height: 1.6;
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.08) 0%, rgba(139, 195, 74, 0.05) 100%);
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.1);
+  position: relative;
   
-  span {
-    font-size: 12px;
-    color: #8aa;
-    min-width: 50px;
-  }
-  
-  input, select {
-    flex: 1;
-    background: #2a2a2a;
-    color: white;
-    border: 1px solid #444;
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 12px;
-    
-    &:focus {
-      outline: none;
-      border-color: #0694fb;
-    }
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #4CAF50, #8BC34A);
+    border-radius: 8px 8px 0 0;
   }
 `
 
-const PresetButtons = styled.div`
+const LLMNotesFooter = styled.div`
   display: flex;
-  gap: 4px;
-  margin-top: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+`
+
+const LLMNotesLabel = styled.div`
+  font-size: 10px;
+  color: #8aa;
+  font-style: italic;
+  background: rgba(76, 175, 80, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(76, 175, 80, 0.2);
+`
+
+const ScanNotesSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+const ScanNotesTitle = styled.div`
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  display: flex;
+  align-items: center;
+`
+
+const ScanNotesContent = styled.div`
+  font-size: 13px;
+  color: #fff3e0;
+  line-height: 1.6;
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.08) 0%, rgba(255, 193, 7, 0.05) 100%);
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.1);
+  position: relative;
   
-  button {
-    background: #333;
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #ff9800, #ffc107);
+    border-radius: 8px 8px 0 0;
+  }
+`
+
+const ScanNotesFooter = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+`
+
+const ScanNotesLabel = styled.div`
+  font-size: 10px;
+  color: #8aa;
+  font-style: italic;
+  background: rgba(255, 152, 0, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 152, 0, 0.2);
+`
+
+const MetadataSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+const MetadataTitle = styled.div`
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  display: flex;
+  align-items: center;
+`
+
+const MetadataGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+`
+
+const MetadataItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+`
+
+const MetadataLabel = styled.div`
+  font-size: 10px;
     color: #8aa;
-    border: 1px solid #555;
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 10px;
+  font-weight: 500;
+`
+
+const MetadataValue = styled.div`
+    font-size: 12px;
+    color: white;
+  font-weight: 600;
+`
+
+const ActionButtons = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`
+
+// Loading animation components
+const LoadingOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+`
+
+const LoadingSpinner = styled.div`
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(6, 148, 251, 0.3);
+  border-top: 3px solid #0694fb;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`
+
+const LoadingText = styled.div`
+  color: #8aa;
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.4;
+`
+
+const LoadingProgress = styled.div`
+  width: 200px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 1px;
+  margin-top: 12px;
+  overflow: hidden;
+  
+  &::after {
+    content: '';
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, #0694fb, transparent);
+    animation: loading-bar 1.5s ease-in-out infinite;
+  }
+  
+  @keyframes loading-bar {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+`
+
+const AnalysisContent = styled.div<{ $isLoading: boolean }>`
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  opacity: ${props => props.$isLoading ? 0.3 : 1};
+  transform: ${props => props.$isLoading ? 'translateY(10px)' : 'translateY(0)'};
+`
+
+// Image transition components
+const ImageContainer = styled.div`
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+`
+
+const ImageSlide = styled.div<{ $isActive: boolean; $direction: 'left' | 'right' }>`
+  position: absolute;
+  inset: 0;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+  transform: ${props => 
+    props.$isActive 
+      ? 'translateX(0)' 
+      : props.$direction === 'left' 
+        ? 'translateX(-100%)' 
+        : 'translateX(100%)'
+  };
+  opacity: ${props => props.$isActive ? 1 : 0};
+`
+
+const ThumbnailContainer = styled.div<{ $isSelected: boolean; $isLoading: boolean }>`
+  position: relative;
+  cursor: pointer;
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: ${props => props.$isSelected ? 'scale(1.05)' : 'scale(1)'};
+  border: ${props => props.$isSelected ? '2px solid #0694fb' : '1px solid rgba(255,255,255,0.2)'};
+  box-shadow: ${props => props.$isSelected ? '0 0 15px rgba(6, 148, 251, 0.4)' : '0 2px 8px rgba(0,0,0,0.3)'};
+  width: 50px;
+  height: 50px;
+  
+  &:hover {
+    transform: ${props => props.$isSelected ? 'scale(1.05)' : 'scale(1.02)'};
+    border-color: #0694fb;
+    box-shadow: 0 0 15px rgba(6, 148, 251, 0.4);
+  }
+  
+  ${props => props.$isLoading && `
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(6, 148, 251, 0.1);
+      border: 2px solid #0694fb;
+      border-radius: 6px;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 0.8; }
+    }
+  `}
+`
+
+const SidebarActionButton = styled.button<{ $variant: 'primary' | 'secondary' }>`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
+  border: none;
+    
+  ${props => props.$variant === 'primary' ? `
+    background: linear-gradient(135deg, #0694fb 0%, #0582d9 100%);
+      color: white;
+    box-shadow: 0 2px 8px rgba(6, 148, 251, 0.3);
+
+  &:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(6, 148, 251, 0.4);
+    }
+  ` : `
+    background: transparent;
+    color: #8aa;
+    border: 1px solid rgba(255, 255, 255, 0.2);
     
     &:hover {
-      background: #444;
+  background: rgba(255, 255, 255, 0.05);
       color: white;
     }
-  }
+  `}
 `
 
-const StyledSelect = styled.select`
-  width: 100%;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  color: #ffffff;
-  font-size: 14px;
-  font-family: var(--font-primary);
-  transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239c9c9c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 16px;
-  padding-right: 40px;
-
-  & option {
-    background: #1a2a3a;
-    color: #ffffff;
-    padding: 8px;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: #0694fb;
-    background: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 0 0 3px rgba(6, 148, 251, 0.15);
-  }
-
-  &:hover {
-    border-color: rgba(255, 255, 255, 0.2);
-  }
-
-  @media (min-width: 481px) and (max-width: 768px) {
-    padding: 14px 16px;
-    font-size: 15px;
-    padding-right: 40px;
-  }
-
-  @media (min-width: 769px) {
-    padding: 16px 16px;
-    font-size: 16px;
-    padding-right: 40px;
-  }
-`;
-
-const StyledInput = styled.input`
-  width: 100%;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  color: #ffffff;
-  font-size: 14px;
-  font-family: var(--font-primary);
-  transition: all 0.3s ease;
-  backdrop-filter: blur(10px);
-
-  &::placeholder {
-    color: #9c9c9c;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: #0694fb;
-    background: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 0 0 3px rgba(6, 148, 251, 0.15);
-  }
-
-  &:hover {
-    border-color: rgba(255, 255, 255, 0.2);
-  }
-
-  @media (min-width: 481px) and (max-width: 768px) {
-    padding: 14px 16px;
-    font-size: 15px;
-  }
-
-  @media (min-width: 769px) {
-    padding: 16px 16px;
-    font-size: 16px;
-  }
-`;
-
-const AnalysisDetail: React.FC = () => {
+// Main AnalysisDetail Component
+const AnalysisDetail = () => {
+  // Router and pathname
+  const router = useRouter()
   const pathname = usePathname()
-  const analysisId = pathname.split('/').pop()
+  const analysisId = pathname?.split('/').pop()
 
-  const [loading, setLoading] = useState(true)
-  const [status, setStatus] = useState('pending')
-  const [meta, setMeta] = useState<any>(null)
-  const [files, setFiles] = useState<any[]>([])
-  const [selected, setSelected] = useState(0)
-  const [polling, setPolling] = useState(false)
-  const [activeTool, setActiveTool] = useState('select')
-  const [annotations, setAnnotations] = useState<any[]>([])
-  const [measurements, setMeasurements] = useState<any[]>([])
-  const [scan, setScan] = useState<any>(null)
-  const [patient, setPatient] = useState<any>(null)
-  
-  // Image dimensions state for coordinate normalization
-  const [currentImageDimensions, setCurrentImageDimensions] = useState<{width: number, height: number} | null>(null)
-  
-  // Function to get current image dimensions
-  const updateImageDimensions = React.useCallback(() => {
-    const imgElement = document.querySelector('.image-viewer img') as HTMLImageElement
-    if (imgElement) {
-      setCurrentImageDimensions({
-        width: imgElement.naturalWidth || imgElement.clientWidth,
-        height: imgElement.naturalHeight || imgElement.clientHeight
-      })
-      console.log('📏 Updated image dimensions:', imgElement.naturalWidth || imgElement.clientWidth, 'x', imgElement.naturalHeight || imgElement.clientHeight)
-    }
-  }, [])
-  
-  // Professional annotation tool states
-  const [overlayVisible, setOverlayVisible] = useState(true)
-  const [overlayOpacity, setOverlayOpacity] = useState(80)
-  const [brushSize, setBrushSize] = useState(10)
-  const [brushHardness, setBrushHardness] = useState(0.8)
-  const [activeLabel, setActiveLabel] = useState('Tumor')
-  const [labels, setLabels] = useState([
-    { id: 'Tumor', name: 'Tumor', color: '#ff0000', opacity: 100, visible: true, voxelCount: 0 },
-    { id: 'Liver', name: 'Liver', color: '#00ff00', opacity: 100, visible: true, voxelCount: 0 },
-    { id: 'Bone', name: 'Bone', color: '#ffff00', opacity: 100, visible: true, voxelCount: 0 },
-    { id: 'Background', name: 'Background', color: '#0000ff', opacity: 100, visible: true, voxelCount: 0 }
-  ])
-  // Image-specific annotation storage
-  const [imageAnnotations, setImageAnnotations] = useState<{[imageIndex: number]: {
-    shapes: any[],
-    textAnnotations: any[],
-    measurements: any[],
-    history: any[],
-    historyIndex: number
-  }}>({})
-  
-  const [bookmarks, setBookmarks] = useState<any[]>([])
-  const [studyState, setStudyState] = useState<'pending' | 'accepted' | 'rejected'>('pending')
-  
-  // Dataset export states
+  // State management - must be declared before useAnalysisManager
+  const [meta, setMeta] = useState<any>({})
   const [showExportDialog, setShowExportDialog] = useState(false)
   const [exportFormat, setExportFormat] = useState('yolo')
-  const [includeMeasurements, setIncludeMeasurements] = useState(false)
-  const [exporting, setExporting] = useState(false)
-  
-  // Panel collapse states
-  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
-  const [accordionStates, setAccordionStates] = useState({
-    selection: true,
-    roi: true,
-    measuring: true,
-    workflow: false
-  })
-  
-  // Get current image annotations with initialization
-  const currentImageAnnotations = imageAnnotations[selected] || {
-    shapes: [],
-    textAnnotations: [],
-    measurements: [],
-    history: [],
-    historyIndex: -1
-  }
-  
-  // Derived state for current image
-  const drawingShapes = currentImageAnnotations?.shapes || []
-  const textAnnotations = currentImageAnnotations?.textAnnotations || []
-  const measurementLines = currentImageAnnotations?.measurements || []
-  const history = currentImageAnnotations?.history || []
-  const historyIndex = currentImageAnnotations?.historyIndex || -1
-  
-  // Initialize annotations for the current image and update image dimensions
-  React.useEffect(() => {
-    if (!imageAnnotations[selected] && Array.isArray(files) && files.length > 0) {
-      setImageAnnotations(prev => ({
-        ...prev,
-        [selected]: {
-          shapes: [],
-          textAnnotations: [],
-          measurements: [],
-          history: [],
-          historyIndex: -1
-        }
-      }))
-    }
-    
-    // Update image dimensions when files load or selection changes
-    if (Array.isArray(files) && files.length > 0) {
-      // Small delay to allow image to load
+  const [files, setFiles] = useState<any[]>([])
+  const [selected, setSelected] = useState(0)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [notesExpanded, setNotesExpanded] = useState(false)
+  const [isOutputModalOpen, setIsOutputModalOpen] = useState(false)
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false)
+  const [isLoadingImage, setIsLoadingImage] = useState(false)
+  const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false)
+  const [previousSelected, setPreviousSelected] = useState(0)
+  const [isTransitioning, setIsTransitioning] = useState(false)
+
+  // Analysis management
+  const {
+    currentAnalysis,
+    analysisHistory,
+    isRunning: isAnalysisRunning,
+    progress: analysisProgress,
+    error: analysisError,
+    startAnalysis,
+    cancelAnalysis,
+    clearError,
+    getAnalysisByType,
+    isAnalysisCached,
+    hasCompletedAnalysis
+  } = useAnalysisManager(analysisId || '', selected)
+
+  // Track when analysis manager is actively loading data
+  const [isAnalysisManagerLoading, setIsAnalysisManagerLoading] = useState(false)
+
+  // Debug: Log when selected image changes
+  useEffect(() => {
+    console.log(`🖼️ Selected image changed to index: ${selected}`)
+    console.log(`📊 Current analysis:`, currentAnalysis ? {
+      id: currentAnalysis.id,
+      imageIndex: currentAnalysis.imageIndex,
+      status: currentAnalysis.status,
+      detected_case: currentAnalysis.detected_case
+    } : 'null')
+  }, [selected, currentAnalysis])
+
+  // Consolidated loading state management
+  useEffect(() => {
+    // Set loading when image selection changes
+    if (files.length > 0) {
+      console.log(`🔄 Loading states triggered for image ${selected}`)
+      setIsLoadingImage(true)
+      setIsLoadingAnalysis(true)
+      setIsAnalysisManagerLoading(true)
+      
+      const startTime = Date.now()
+      const minLoadingTime = 800 // Minimum 800ms loading time for better UX
+      
+      // Image loading is complete when we have the selected image
+      const checkImageLoaded = () => {
+        const elapsed = Date.now() - startTime
+        const remainingTime = Math.max(0, minLoadingTime - elapsed)
+        
+        setTimeout(() => {
+          if (files[selected] && files[selected].url) {
+            console.log(`✅ Image ${selected} loaded`)
+            setIsLoadingImage(false)
+          }
+        }, remainingTime)
+      }
+      
+      // Analysis manager loading
+      const checkAnalysisManagerReady = () => {
+        const elapsed = Date.now() - startTime
+        const remainingTime = Math.max(0, minLoadingTime - elapsed)
+        
+        setTimeout(() => {
+          // Analysis is ready when:
+          // 1. We have an analysis that belongs to the selected image, OR
+          // 2. We don't have an analysis (which means no analysis exists for this image)
+          if (!currentAnalysis || currentAnalysis.imageIndex === selected) {
+            console.log(`✅ Analysis manager ready for image ${selected}`)
+            setIsAnalysisManagerLoading(false)
+          }
+        }, remainingTime)
+      }
+      
+      // Analysis loading is complete when we have the correct analysis for the selected image
+      const checkAnalysisLoaded = () => {
+        const elapsed = Date.now() - startTime
+        const remainingTime = Math.max(0, minLoadingTime - elapsed)
+        
+        setTimeout(() => {
+          // If there's no analysis for this image, that's also "loaded" (shows pending state)
+          // If there is an analysis, it should belong to the currently selected image
+          if (!currentAnalysis || currentAnalysis.imageIndex === selected) {
+            console.log(`✅ Analysis for image ${selected} loaded`)
+            setIsLoadingAnalysis(false)
+          }
+        }, remainingTime)
+      }
+      
+      // Check immediately
+      checkImageLoaded()
+      checkAnalysisManagerReady()
+      checkAnalysisLoaded()
+      
+      // Also check after a short delay to handle async updates
       const timer = setTimeout(() => {
-        updateImageDimensions()
-      }, 500)
+        checkImageLoaded()
+        checkAnalysisManagerReady()
+        checkAnalysisLoaded()
+      }, 100)
       
-      return () => clearTimeout(timer)
-    }
-  }, [selected, imageAnnotations, files, updateImageDimensions])
-
-  // Recalculate image dimensions when viewer container resizes (e.g., panels collapse)
-  // (moved below after viewerContainer declaration to satisfy linter)
-  
-  // Sync live arrays when switching images if annotations exist
-  React.useEffect(() => {
-    const cur = imageAnnotations[selected]
-    if (cur) {
-      setDrawingShapes(cur.shapes || [])
-      setTextAnnotations(cur.textAnnotations || [])
-      setMeasurementLines(cur.measurements || [])
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected])
-  
-  // Unified Tool System State
-  const [toolState, setToolState] = useState({
-    isDrawing: false,
-    isPanning: false,
-    currentPath: [] as any[],
-    currentShape: null as any,
-    currentMeasurement: null as any,
-    lastPoint: { x: 0, y: 0 },
-    startPoint: { x: 0, y: 0 }
-  })
-  
-  // Auto-save annotations debounce timer
-  const saveTimer = React.useRef<NodeJS.Timeout | null>(null)
-
-  // Robust save queue with retry and offline fallback
-  type PendingSave = { scanId: string; imageIndex: number; annotations: any; attempts: number }
-  const saveQueueRef = React.useRef<PendingSave[]>([])
-  const isProcessingQueueRef = React.useRef<boolean>(false)
-
-  const persistQueue = React.useCallback(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('annotationSaveQueue', JSON.stringify(saveQueueRef.current))
+      return () => {
+        clearTimeout(timer)
       }
-    } catch (e) {
-      console.warn('Could not persist save queue', e)
     }
-  }, [])
+  }, [selected, files.length, files[selected]?.url, currentAnalysis?.imageIndex])
 
-  const loadQueue = React.useCallback(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = window.localStorage.getItem('annotationSaveQueue')
-        if (raw) {
-          const parsed = JSON.parse(raw)
-          if (Array.isArray(parsed)) {
-            saveQueueRef.current = parsed
-          }
+  // Derive a stable status for UI badges
+  const status = currentAnalysis?.status || (isAnalysisRunning ? 'processing' : (hasCompletedAnalysis() ? 'completed' : 'pending'))
+
+  // Only use AI medical_note (no fallback)
+  const medicalNotesText = ((currentAnalysis as any)?.medical_note || '') as string
+
+  // Helpers to normalize and parse confidence data
+  const normalized = (s: string) => s.toLowerCase().replace(/\s|_/g, '')
+  const parsePercent = (val: any): number => {
+    if (val === null || val === undefined) return 0
+    if (typeof val === 'number') return !isFinite(val) ? 0 : (val <= 1 ? val * 100 : val)
+    if (typeof val === 'string') {
+      const t = val.trim()
+      const stripped = t.endsWith('%') ? t.slice(0, -1) : t
+      const n = Number(stripped)
+      if (!isFinite(n)) return 0
+      return n <= 1 ? n * 100 : n
+    }
+    return 0
+  }
+  const getConfidenceColor = (v: number) => {
+    if (v >= 90) return '#4CAF50'
+    if (v >= 75) return '#8BC34A'
+    if (v >= 60) return '#FFC107'
+    if (v >= 40) return '#FF9800'
+    return '#F44336'
+  }
+  const extractConfidenceEntries = React.useMemo(() => {
+    const cs: any = (currentAnalysis as any)?.confidence_scores
+    if (!cs) return [] as [string, number][]
+    let entries: [string, number][] = []
+    if (Array.isArray(cs)) {
+      for (const item of cs) {
+        if (Array.isArray(item) && item.length >= 2) {
+          entries.push([String(item[0]), parsePercent(item[1])])
+          continue
         }
-      }
-    } catch (e) {
-      console.warn('Could not load save queue', e)
-    }
-  }, [])
-
-  const processQueue = React.useCallback(async () => {
-    if (isProcessingQueueRef.current) {
-      console.log('⏳ Queue processing already in progress, skipping')
-      return
-    }
-    isProcessingQueueRef.current = true
-    console.log(`🔄 Starting queue processing with ${saveQueueRef.current.length} items`)
-    try {
-      while (saveQueueRef.current.length > 0) {
-        const item = saveQueueRef.current[0]
-        const maxAttempts = 5
-        const attempt = item.attempts ?? 0
-        try {
-          console.log(`🔄 Processing save for scan ${item.scanId}, image ${item.imageIndex}`)
-          await scansAPI.saveAnnotations(item.scanId, item.imageIndex, item.annotations)
-          console.log(`✅ Successfully saved annotations for scan ${item.scanId}, image ${item.imageIndex}`)
-          saveQueueRef.current.shift()
-          persistQueue()
-        } catch (err) {
-          console.error(`❌ Failed to save annotations for scan ${item.scanId}, image ${item.imageIndex}:`, err)
-          const nextAttempts = attempt + 1
-          if (nextAttempts >= maxAttempts) {
-            console.error('Dropping save after max retries', err)
-            saveQueueRef.current.shift()
-            persistQueue()
+        if (item && typeof item === 'object') {
+          const key = item.label ?? item.name ?? item.class ?? item.key ?? item.category ?? item.type
+          const val = item.value ?? item.score ?? item.confidence ?? item.probability ?? item.percent
+          if (key !== undefined && val !== undefined) {
+            entries.push([String(key), parsePercent(val)])
           } else {
-            // Exponential backoff with jitter
-            item.attempts = nextAttempts
-            const backoffMs = Math.min(30000, Math.pow(2, nextAttempts) * 500) + Math.floor(Math.random() * 250)
-            persistQueue()
-            await new Promise(res => setTimeout(res, backoffMs))
+            for (const [k, v] of Object.entries(item)) {
+              entries.push([k, parsePercent(v as any)])
+            }
           }
         }
       }
-    } finally {
-      isProcessingQueueRef.current = false
-      console.log(`✅ Queue processing completed. Remaining items: ${saveQueueRef.current.length}`)
+    } else if (typeof cs === 'object') {
+      entries = Object.entries(cs).map(([k, v]) => [k, parsePercent(v)])
     }
-  }, [persistQueue])
+    return entries.filter(([, v]) => isFinite(v)).sort((a, b) => b[1] - a[1])
+  }, [currentAnalysis])
 
-  const enqueueSave = React.useCallback((scanId: string, imageIndex: number, annotations: any) => {
-    console.log(`📝 Enqueuing save for scan ${scanId}, image ${imageIndex} with ${annotations.shapes?.length || 0} shapes, ${annotations.textAnnotations?.length || 0} texts, ${annotations.measurements?.length || 0} measurements`)
-    // Coalesce: if last in queue is same imageIndex, replace it
-    const q = saveQueueRef.current
-    const last = q[q.length - 1]
-    if (last && last.scanId === scanId && last.imageIndex === imageIndex) {
-      last.annotations = annotations
-      last.attempts = 0
-      console.log(`🔄 Updated existing queue item for scan ${scanId}, image ${imageIndex}`)
-    } else {
-      q.push({ scanId, imageIndex, annotations, attempts: 0 })
-      console.log(`➕ Added new queue item for scan ${scanId}, image ${imageIndex}. Queue length: ${q.length}`)
-    }
-    persistQueue()
-    // Trigger processing soon
-    setTimeout(() => {
-      processQueue()
-    }, 0)
-  }, [persistQueue, processQueue])
-
-  // Debounced save enqueues into the robust queue
-  const debouncedSaveAnnotations = React.useCallback((imageIndex: number, annotationData: any) => {
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current)
-    }
-    saveTimer.current = setTimeout(() => {
-      if (analysisId) {
-        enqueueSave(analysisId, imageIndex, annotationData)
-        console.log(`💾 Queued auto-save for image ${imageIndex}`)
-      }
-    }, 2000)
-  }, [analysisId, enqueueSave])
-
-  // Load pending queue on mount and flush when back online
+  // Load scan data and check for cached analysis
   useEffect(() => {
-    loadQueue()
-    const handleOnline = () => processQueue()
-    if (typeof window !== 'undefined') {
-      window.addEventListener('online', handleOnline)
-    }
-    // Kick off processing at start
-    processQueue()
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('online', handleOnline)
-      }
-    }
-  }, [loadQueue, processQueue])
-  
-  // Setter functions for current image annotation updates
-  const setDrawingShapes = (update: any) => {
-    setImageAnnotations(prev => {
-      const newAnnotations = {
-      ...prev,
-      [selected]: {
-        ...prev[selected],
-        shapes: typeof update === 'function' ? update(prev[selected]?.shapes || []) : update
-      }
-      }
-      
-      // Auto-save after update
-      const currentAnnotations = newAnnotations[selected]
-      if (currentAnnotations && analysisId) {
-        debouncedSaveAnnotations(selected, {
-          shapes: currentAnnotations.shapes || [],
-          textAnnotations: currentAnnotations.textAnnotations || [],
-          measurements: currentAnnotations.measurements || []
-        })
-      }
-      
-      return newAnnotations
-    })
-  }
-  
-  const setTextAnnotations = (update: any) => {
-    setImageAnnotations(prev => {
-      const newAnnotations = {
-      ...prev,
-      [selected]: {
-        ...prev[selected],
-        textAnnotations: typeof update === 'function' ? update(prev[selected]?.textAnnotations || []) : update
-      }
-      }
-      
-      // Auto-save after update
-      const currentAnnotations = newAnnotations[selected]
-      if (currentAnnotations && analysisId) {
-        debouncedSaveAnnotations(selected, {
-          shapes: currentAnnotations.shapes || [],
-          textAnnotations: currentAnnotations.textAnnotations || [],
-          measurements: currentAnnotations.measurements || []
-        })
-      }
-      
-      return newAnnotations
-    })
-  }
-  
-  const setMeasurementLines = (update: any) => {
-    setImageAnnotations(prev => {
-      const newAnnotations = {
-      ...prev,
-      [selected]: {
-        ...prev[selected],
-        measurements: typeof update === 'function' ? update(prev[selected]?.measurements || []) : update
-      }
-      }
-      
-      // Auto-save after update
-      const currentAnnotations = newAnnotations[selected]
-      if (currentAnnotations && analysisId) {
-        debouncedSaveAnnotations(selected, {
-          shapes: currentAnnotations.shapes || [],
-          textAnnotations: currentAnnotations.textAnnotations || [],
-          measurements: currentAnnotations.measurements || []
-        })
-      }
-      
-      return newAnnotations
-    })
-  }
-  
-  const setHistory = (update: any) => {
-    setImageAnnotations(prev => ({
-      ...prev,
-      [selected]: {
-        ...prev[selected],
-        history: typeof update === 'function' ? update(prev[selected]?.history || []) : update
-      }
-    }))
-  }
-  
-  const setHistoryIndex = (update: any) => {
-    setImageAnnotations(prev => ({
-      ...prev,
-      [selected]: {
-        ...prev[selected],
-        historyIndex: typeof update === 'function' ? update(prev[selected]?.historyIndex || -1) : update
-      }
-    }))
-  }
-  
-  // Viewer References
-  const [viewerContainer, setViewerContainer] = useState<HTMLDivElement | null>(null)
-  const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const imageRef = useRef<HTMLImageElement>(null)
-  
-  
-  // Modal State
-  const [showTextModal, setShowTextModal] = useState(false)
-  const [modalType, setModalType] = useState<'text' | 'comment' | 'roi-label'>('text')
-  const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
-  const [modalText, setModalText] = useState('')
-  const [selectedShapeForLabel, setSelectedShapeForLabel] = useState<any>(null)
-  
-  // ROI Validation Feedback
-  const [showValidationMessage, setShowValidationMessage] = useState(false)
-  const [validationMessage, setValidationMessage] = useState('')
-  
-  // Image Processing State
-  const [imageCanvas, setImageCanvas] = useState<HTMLCanvasElement | null>(null)
-  const [imageContext, setImageContext] = useState<CanvasRenderingContext2D | null>(null)
-  const [originalImageData, setOriginalImageData] = useState<ImageData | null>(null)
-  const [isProcessing, setIsProcessing] = useState(false)
-  
-  // Measurement State
-  const [measurementUnit, setMeasurementUnit] = useState<'pixels' | 'mm' | 'cm'>('mm')
-  
-  // Toggle accordion section
-  const toggleAccordion = (section: string) => {
-    setAccordionStates(prev => ({
-      ...prev,
-      [section]: !prev[section as keyof typeof prev]
-    }))
-  }
-  
-  // Toggle left panel
-  const toggleLeftPanel = () => {
-    setLeftPanelCollapsed(!leftPanelCollapsed)
-  }
-  const [pixelToMmRatio, setPixelToMmRatio] = useState(0.5) // Default: 2 pixels per mm (typical for high-res medical imaging)
-  const [measurementResults, setMeasurementResults] = useState<any[]>([])
+    if (!analysisId) return
 
-  // Enhanced measurement unit handling
-  const handleMeasurementUnitChange = (unit: 'pixels' | 'mm' | 'cm') => {
-    setMeasurementUnit(unit)
-    // Reset scale when switching back to pixels
-    if (unit === 'pixels') {
-      setPixelToMmRatio(0.5)
-    }
-  }
-
-  // Enhanced pixel ratio handling with validation
-  const handlePixelRatioChange = (value: number) => {
-    const clampedValue = Math.max(0.01, Math.min(1000, value))
-    setPixelToMmRatio(clampedValue)
-  }
-  
-  // Selection State
-  const [selectedAnnotation, setSelectedAnnotation] = useState<string | null>(null)
-  const [selectedAnnotationType, setSelectedAnnotationType] = useState<'shape' | 'text' | 'measurement' | null>(null)
-
-  useEffect(() => {
-    const load = async () => {
+    const loadScanData = async () => {
       try {
-        setLoading(true)
+        const response = await api.get(`/api/scans/${analysisId}`)
+        const scanData = response.data?.data?.scan
         
-        if (!analysisId) {
-          console.error('❌ No analysis ID provided')
-          return
-        }
+        if (scanData) {
+          setMeta({
+            scanType: scanData.scanType,
+            patient: `${scanData.patientFirstName} ${scanData.patientLastName}`,
+            caseId: scanData.scanId,
+            bodyPart: scanData.bodyPart,
+            analysisType: scanData.analysisType || 'auto',
+            confidence: scanData.confidence,
+            findings: scanData.aiFindings,
+            recommendations: scanData.recommendations || 'No recommendations available at this time.',
+            notes: scanData.notes || ''
+          })
 
-        console.log('🔍 Loading analysis data for ID:', analysisId)
-        
-        // Fetch scan data
-        const scanResponse = await api.get(`/api/scans/${analysisId}`)
-        const scanData = scanResponse.data?.data
-        
-        if (!scanData) {
-          console.error('❌ No scan data found')
-          return
-        }
-        
-        console.log('📋 Scan data loaded:', scanData)
-        setScan(scanData)
-        
-        // Fetch patient data if patient id exists (handle both camelCase and snake_case)
-        let patientData = null
-        const pid = scanData.patientId || scanData.patient_id
-        if (pid) {
-          try {
-            const patientResponse = await api.get(`/api/patients/${pid}`)
-            // API returns patient under data.patient with camelCase keys
-            patientData = patientResponse.data?.data?.patient
-            console.log('👤 Patient data loaded:', patientData)
-            setPatient(patientData)
-          } catch (error) {
-            console.warn('⚠️ Could not load patient data:', error)
+          // Check if we have a cached analysis for this scan type
+          const cachedAnalysis = getAnalysisByType(scanData.analysisType)
+          if (cachedAnalysis && isAnalysisCached(scanData.analysisType)) {
+            console.log('📋 Using cached analysis results')
           }
         }
-        
-        // Fetch images for this scan
-        try {
-          const imagesResponse = await api.get(`/api/scans/${analysisId}/images`)
-          console.log('🔍 Raw images response:', imagesResponse.data)
-          const imagesData = imagesResponse.data?.data?.images || []
-          console.log('🖼️ Images loaded:', imagesData)
-          
-          // Validate image URLs
-          const validatedImages = imagesData.map((img: any, index: number) => {
-            console.log(`🔍 Validating image ${index}:`, {
-              url: img.url,
-              name: img.name,
-              urlValid: img.url && typeof img.url === 'string' && img.url.startsWith('http'),
-              nameValid: img.name && typeof img.name === 'string'
-            })
-            return img
-          })
-          
-          setFiles(validatedImages)
-        } catch (error) {
-          console.warn('⚠️ Could not load images:', error)
-          setFiles([])
-        }
-        
-        // Fetch saved annotations for this scan
-        try {
-          const annotationsResponse = await scansAPI.getAnnotations(analysisId)
-          const annotationsData = annotationsResponse.data?.data?.annotations || {}
-          console.log('📝 Loaded annotations:', annotationsData)
-          
-          // Convert loaded annotations to our imageAnnotations format
-          const loadedImageAnnotations: {[imageIndex: number]: any} = {}
-          
-          Object.entries(annotationsData).forEach(([imageIndexStr, imageAnnotations]: [string, any]) => {
-            const imageIndex = parseInt(imageIndexStr)
-            loadedImageAnnotations[imageIndex] = {
-              shapes: imageAnnotations.shapes || [],
-              textAnnotations: imageAnnotations.textAnnotations || [],
-              measurements: imageAnnotations.measurements || [],
-              history: [],
-              historyIndex: -1
-            }
-          })
-          
-          setImageAnnotations(loadedImageAnnotations)
-          // Hydrate current view from loaded annotations for the selected image
-          try {
-            const cur = loadedImageAnnotations[selected]
-            if (cur) {
-              setDrawingShapes(cur.shapes || [])
-              setTextAnnotations(cur.textAnnotations || [])
-              setMeasurementLines(cur.measurements || [])
-            }
-          } catch (_) {}
-          console.log('✅ Successfully loaded annotations for', Object.keys(loadedImageAnnotations).length, 'images')
-        } catch (error) {
-          console.warn('⚠️ Could not load annotations:', error)
-          setImageAnnotations({})
-        }
-        
-        // Set metadata with patient data (robust to key variants)
-        const firstName = patientData?.firstName ?? patientData?.first_name ?? patientData?.firstname ?? ''
-        const lastName = patientData?.lastName ?? patientData?.last_name ?? patientData?.lastname ?? ''
-        const patientName = `${firstName} ${lastName}`.trim() || (patientData?.patientId ?? patientData?.patientid ?? patientData?.id ?? 'Unknown Patient')
-        const computedPatientId = patientData?.patientId ?? patientData?.patientid ?? patientData?.id ?? (scanData.patientId || scanData.patient_id || '')
-        setMeta({
-          patient: patientName,
-          patientId: computedPatientId,
-          caseId: scanData.scan_id || analysisId,
-          scanType: scanData.scan_type || 'Medical Scan',
-          confidence: scanData.confidence || 0,
-          findings: scanData.findings || scanData.aiFindings || 'No analysis results available.',
-          status: scanData.aiStatus || scanData.status || 'pending'
-        })
-        
-        setStatus(scanData.aiStatus || scanData.status || 'pending')
-        
-        // Clear annotations and measurements for now
-        setAnnotations([])
-        setMeasurements([])
-        
       } catch (error) {
-        console.error('❌ Error loading analysis data:', error)
-        setMeta({
-          patient: 'Error Loading',
-          caseId: analysisId,
-          scanType: 'Unknown',
-          confidence: 0,
-          findings: 'Error loading analysis data. Please try again.',
-          status: 'error'
-        })
-        setStatus('error')
-      } finally {
-        setLoading(false)
+        console.error('Error loading scan data:', error)
       }
     }
-    
-    if (analysisId) load()
+
+    loadScanData()
+  }, [analysisId, getAnalysisByType, isAnalysisCached])
+
+  // Load scan data and images
+  useEffect(() => {
+    if (!analysisId) return
+
+    console.log('🔄 Loading scan data and images for analysisId:', analysisId)
+
+
+    const loadScanImages = async () => {
+      try {
+        const response = await api.get(`/api/scans/${analysisId}/images`)
+        const imagesData = response.data?.data?.images
+        
+        if (imagesData && imagesData.length > 0) {
+          setFiles(imagesData)
+          setSelected(0) // Select first image
+          console.log('✅ Loaded scan images:', imagesData.length)
+        }
+      } catch (error) {
+        console.error('❌ Error loading scan images:', error)
+      }
+    }
+
+    loadScanImages()
   }, [analysisId])
 
-  // Cleanup auto-save timer on unmount
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current)
-      }
-    }
-  }, [])
-
-  // Dataset export function
-  const handleExportAnnotations = async () => {
-    if (!analysisId) return
-    
-    try {
-      setExporting(true)
-      console.log(`📤 Exporting annotations as ${exportFormat} format...`)
-      
-      const response = await scansAPI.exportAnnotations(analysisId, exportFormat, includeMeasurements)
-      const exportData = response.data?.data
-      
-      if (exportData) {
-        // Create downloadable file
-        let filename: string
-        let contentType: string
-        let content: string
-        
-        switch (exportFormat.toLowerCase()) {
-          case 'yolo':
-            filename = `annotations_yolo_${analysisId}.txt`
-            contentType = 'text/plain'
-            // Combine all YOLO files into one
-            content = Object.entries(exportData.files)
-              .map(([fileName, fileContent]) => `# ${fileName}\n${fileContent}`)
-              .join('\n\n')
-            break
-            
-          case 'coco':
-            filename = `annotations_coco_${analysisId}.json`
-            contentType = 'application/json'
-            content = JSON.stringify(exportData, null, 2)
-            break
-            
-          case 'pascal_voc':
-            filename = `annotations_pascal_voc_${analysisId}.xml`
-            contentType = 'application/xml'
-            // Combine all XML files into one
-            content = Object.entries(exportData.files)
-              .map(([fileName, fileContent]) => `<!-- ${fileName} -->\n${fileContent}`)
-              .join('\n\n')
-            break
-            
-          default:
-            filename = `annotations_${analysisId}.txt`
-            contentType = 'text/plain'
-            content = JSON.stringify(exportData, null, 2)
-        }
-        
-        // Create and download file
-        const blob = new Blob([content], { type: contentType })
-        const url = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.download = filename
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        URL.revokeObjectURL(url)
-        
-        console.log(`✅ Successfully exported ${exportFormat.toUpperCase()} dataset`)
-        setShowExportDialog(false)
-      }
-    } catch (error) {
-      console.error('Failed to export annotations:', error)
-    } finally {
-      setExporting(false)
-    }
+  // Handle back navigation
+  const handleBackToScans = () => {
+    router.push('/dashboard/doctor/scans')
   }
 
-  const startAnalysis = async () => {
-    try {
-      console.log('🚀 Starting AI analysis for scan:', analysisId)
-      setStatus('processing')
-      setPolling(false)
+  // Handle image upload
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file || !analysisId) return
 
-      const response = await api.post(`/api/scans/${analysisId}/analyze`)
-      console.log('✅ Analysis started successfully:', response.data)
-      
-      // Start polling for updates
-      setPolling(true)
-      
-    } catch (error: any) {
-      console.error('❌ Failed to start analysis:', error)
-      setStatus('failed')
-      alert(`Analysis failed: ${error.response?.data?.message || error.message || 'Unknown error'}`)
-    }
-  }
-
-  // Poll for analysis status updates
-  useEffect(() => {
-    if (!analysisId || !polling) return
-    if (status !== 'processing') return
-    
-    console.log('🔄 Starting polling for analysis status')
-    
-    let retryCount = 0
-    const maxRetries = 3
-    
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await api.get(`/api/scans/${analysisId}/analysis-status`)
-        const data = response.data?.data
-        
-        if (data?.analysisStatus) {
-          setStatus(data.analysisStatus)
-          
-          // Update metadata with new results
-          if (data.confidence !== undefined) {
-            setMeta((prev: any) => ({ ...prev, confidence: data.confidence }))
-          }
-          if (data.findings) {
-            setMeta((prev: any) => ({ ...prev, findings: data.findings }))
-          }
-        }
-        
-        if (data?.analysisStatus === 'completed' || data?.analysisStatus === 'failed') {
-          console.log('✅ Analysis completed, stopping polling')
-          clearInterval(pollInterval)
-          setPolling(false)
-        }
-        
-        retryCount = 0 // Reset on successful request
-        
-      } catch (error: any) {
-        retryCount++
-        console.error(`❌ Error polling analysis status (attempt ${retryCount}/${maxRetries}):`, error)
-        
-        if (retryCount >= maxRetries) {
-          console.error('❌ Max retries reached, marking analysis as failed')
-          setStatus('failed')
-          clearInterval(pollInterval)
-          setPolling(false)
-          
-          const errorMessage = error.response?.data?.message || error.message || 'Failed to check analysis status'
-          alert(`Analysis failed: ${errorMessage}`)
-        }
-      }
-    }, 2000)
-    
-    return () => {
-      console.log('🛑 Cleaning up polling interval')
-      clearInterval(pollInterval)
-      setPolling(false)
-    }
-  }, [analysisId, polling, status])
-
-  // Drawing and annotation functions
-  const getMousePos = (e: React.MouseEvent) => {
-    if (!viewerContainer) return { x: 0, y: 0 }
-    const rect = viewerContainer.getBoundingClientRect()
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    }
-  }
-
-  // Convert screen coordinates to image coordinates
-  const screenToImageCoords = (screenX: number, screenY: number) => {
-    return {
-      x: (screenX - pan.x) / zoom,
-      y: (screenY - pan.y) / zoom
-    }
-  }
-
-  // Convert image coordinates to screen coordinates
-  const imageToScreenCoords = (imageX: number, imageY: number) => {
-    return {
-      x: imageX * zoom + pan.x,
-      y: imageY * zoom + pan.y
-    }
-  }
-
-  // Helpers to project shapes from image-space to screen-space for rendering
-  const projectPoint = (p: any) => imageToScreenCoords(p.x ?? p.X ?? 0, p.y ?? p.Y ?? 0)
-  const projectRect = (topLeft: any, bottomRight: any) => {
-    const tl = projectPoint(topLeft)
-    const br = projectPoint(bottomRight)
-    return { left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y }
-  }
-
-  const HISTORY_LIMIT = 200
-  const statesEqual = (a: any, b: any) => {
-    try {
-      return JSON.stringify(a) === JSON.stringify(b)
-    } catch {
-      return false
-    }
-  }
-  const saveToHistory = React.useCallback(() => {
-    const newState = {
-      shapes: [...drawingShapes],
-      textAnnotations: [...textAnnotations],
-      measurements: [...measurementLines]
-    }
-    setHistory((prev: any[]) => {
-      const truncated = prev.slice(0, historyIndex + 1)
-      const last = truncated[truncated.length - 1]
-      if (last && statesEqual(last, newState)) return truncated
-      const next = [...truncated, newState]
-      // Cap size
-      if (next.length > HISTORY_LIMIT) {
-        next.shift()
-      }
-      return next
-    })
-    setHistoryIndex((prev: number) => Math.min(prev + 1, HISTORY_LIMIT - 1))
-  }, [drawingShapes, textAnnotations, measurementLines, historyIndex, setHistory, setHistoryIndex])
-
-  // Initialize history with current state
-  useEffect(() => {
-    if (history.length === 0) {
-      const initialState = {
-        shapes: [...drawingShapes],
-        textAnnotations: [...textAnnotations],
-        measurements: [...measurementLines]
-      }
-      setHistory([initialState])
-      setHistoryIndex(0)
-    }
-  }, [])
-
-  const undo = React.useCallback(() => {
-    if (historyIndex > 0) {
-      const prevState = history[historyIndex - 1]
-      setDrawingShapes(prevState.shapes)
-      setTextAnnotations(prevState.textAnnotations)
-      setMeasurementLines(prevState.measurements)
-      setHistoryIndex((prev: number) => prev - 1)
-      // Persist after undo
-      debouncedSaveAnnotations(selected, prevState)
-    }
-  }, [historyIndex, history, setDrawingShapes, setTextAnnotations, setMeasurementLines, setHistoryIndex, debouncedSaveAnnotations, selected])
-
-  const redo = React.useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const nextState = history[historyIndex + 1]
-      setDrawingShapes(nextState.shapes)
-      setTextAnnotations(nextState.textAnnotations)
-      setMeasurementLines(nextState.measurements)
-      setHistoryIndex((prev: number) => prev + 1)
-      // Persist after redo
-      debouncedSaveAnnotations(selected, nextState)
-    }
-  }, [historyIndex, history, setDrawingShapes, setTextAnnotations, setMeasurementLines, setHistoryIndex, debouncedSaveAnnotations, selected])
-
-  // Unified Tool System - Mouse Down Handler
-  const handleMouseDown = (e: React.MouseEvent) => {
-    // Only handle events for drawing tools, let ImageViewer handle select tool
-    if (activeTool === 'select') {
-      return // Let ImageViewer handle this
-    }
-    
-    console.log('Mouse down event, activeTool:', activeTool)
-    e.preventDefault()
-    e.stopPropagation()
-    
-    const posScreen = getMousePos(e)
-    const pos = screenToImageCoords(posScreen.x, posScreen.y)
-    const color = labels.find(l => l.id === activeLabel)?.color || '#ff0000'
-
-    // Update tool state
-    setToolState(prev => ({
-      ...prev,
-      isDrawing: true,
-      startPoint: pos,
-      lastPoint: pos
-    }))
-
-    // Handle different tool types
-    switch (activeTool) {
-      case 'brush':
-        // Initialize image canvas if not already done
-        if (!imageCanvas) {
-          initializeImageCanvas()
-        }
-        
-        // Apply brush effect
-        const brushColor = labels.find(l => l.id === activeLabel)?.color || '#ff0000'
-        applyBrushEffect(posScreen.x, posScreen.y, brushSize, brushColor, overlayOpacity / 100)
-        break
-
-
-      case 'rectangle':
-      case 'ellipse':
-      case 'polygon':
-      case 'lasso':
-      case 'length':
-      case 'ellipseStats':
-        setToolState(prev => ({
-          ...prev,
-          currentShape: {
-            type: activeTool,
-            start: pos,
-            end: pos,
-            points: [pos],
-            color,
-            opacity: overlayOpacity / 100
-          }
-        }))
-        break
-
-      case 'marker':
-        const newMarker = {
-          id: Date.now(),
-          type: 'marker',
-          x: pos.x,
-          y: pos.y,
-          color
-        }
-        setDrawingShapes((prev: any[]) => [...prev, newMarker])
-        saveToHistory()
-        // No automatic label prompt for markers
-        break
-
-      case 'text':
-        setModalType('text')
-        setModalPosition(pos)
-        setModalText('')
-        setShowTextModal(true)
-        break
-
-      case 'comment':
-        setModalType('comment')
-        setModalPosition(pos)
-        setModalText('')
-        setShowTextModal(true)
-        break
-
-      case 'arrow':
-        setToolState(prev => ({
-          ...prev,
-          currentShape: {
-            type: 'arrow',
-            start: pos,
-            end: pos,
-            color
-          }
-        }))
-        break
-
-
-      case 'polyline':
-        setToolState(prev => ({
-          ...prev,
-          currentMeasurement: {
-            type: 'polyline',
-            points: [pos],
-            color: '#00ff00'
-          }
-        }))
-        break
-
-      case 'threshold':
-        // Initialize image canvas if not already done
-        if (!imageCanvas) {
-          initializeImageCanvas()
-        }
-        
-        // Apply threshold effect
-        const thresholdValue = 30 // Default threshold
-        applyThresholdEffect(pos.x, pos.y, thresholdValue)
-        break
-
-      case 'regionGrow':
-        // Initialize image canvas if not already done
-        if (!imageCanvas) {
-          initializeImageCanvas()
-        }
-        
-        // Apply region growing effect
-        const tolerance = 50 // Default tolerance
-        applyRegionGrowEffect(pos.x, pos.y, tolerance)
-        break
-
-      case 'fill':
-        // Initialize image canvas if not already done
-        if (!imageCanvas) {
-          initializeImageCanvas()
-        }
-        
-        // Apply fill effect
-        const fillColor = labels.find(l => l.id === activeLabel)?.color || '#ff0000'
-        applyFillEffect(pos.x, pos.y, fillColor)
-        break
-
-      case 'smooth':
-        // Initialize image canvas if not already done
-        if (!imageCanvas) {
-          initializeImageCanvas()
-        }
-        
-        // Apply smooth effect
-        const smoothRadius = brushSize * 2
-        applySmoothEffect(pos.x, pos.y, smoothRadius)
-        break
-
-      case 'interpolate':
-        // Initialize image canvas if not already done
-        if (!imageCanvas) {
-          initializeImageCanvas()
-        }
-        
-        // Apply interpolate effect
-        const interpolateRadius = brushSize * 3
-        applyInterpolateEffect(pos.x, pos.y, interpolateRadius)
-        break
-
-
-      case 'probe':
-        // Probe tool - click to get pixel value
-        const probeValue = getPixelValue(pos.x, pos.y)
-        const newProbe = {
-          id: Date.now(),
-          type: 'probe',
-          x: pos.x,
-          y: pos.y,
-          pixelValue: probeValue,
-          formattedValue: `${probeValue.toFixed(1)} HU`,
-          color: '#ff00ff',
-          timestamp: new Date().toISOString()
-        }
-        saveToHistory()
-        break
-
-      case 'volume':
-        // Volume tool - click to calculate volume
-        const volumeValue = getPixelValue(pos.x, pos.y)
-        const newVolume = {
-          id: Date.now(),
-          type: 'volume',
-          x: pos.x,
-          y: pos.y,
-          pixelValue: volumeValue,
-          formattedValue: `${volumeValue.toFixed(1)} HU`,
-          color: '#8800ff',
-          timestamp: new Date().toISOString()
-        }
-        saveToHistory()
-        break
-
-      default:
-        // For unimplemented tools, just log
-        console.log(`Tool ${activeTool} not yet implemented`)
-        break
-    }
-  }
-
-  // Unified Tool System - Mouse Move Handler
-  const handleMouseMove = (e: React.MouseEvent) => {
-    // Only handle events for drawing tools, let ImageViewer handle select tool
-    if (activeTool === 'select') {
-      return // Let ImageViewer handle this
-    }
-    
-    e.preventDefault()
-    e.stopPropagation()
-    
-    const posScreen = getMousePos(e)
-    const pos = screenToImageCoords(posScreen.x, posScreen.y)
-
-    // Update last point
-    setToolState(prev => ({
-      ...prev,
-      lastPoint: pos
-    }))
-
-    // Handle different tool types during drawing
-    if (toolState.isDrawing) {
-      switch (activeTool) {
-        case 'brush':
-          // Apply brush effect during mouse move
-          if (!imageCanvas) {
-            initializeImageCanvas()
-          }
-          const brushColor = labels.find(l => l.id === activeLabel)?.color || '#ff0000'
-          applyBrushEffect(pos.x, pos.y, brushSize, brushColor, overlayOpacity / 100)
-          break
-
-        case 'rectangle':
-        case 'ellipse':
-        case 'length':
-        case 'arrow':
-        case 'ellipseStats':
-          setToolState(prev => ({
-            ...prev,
-            currentShape: {
-              ...prev.currentShape,
-              end: pos
-            }
-          }))
-          break
-
-
-        case 'polygon':
-        case 'lasso':
-          setToolState(prev => ({
-            ...prev,
-            currentShape: {
-              ...prev.currentShape,
-              points: [...prev.currentShape.points, pos]
-            }
-          }))
-          break
-
-
-        case 'polyline':
-          setToolState(prev => ({
-            ...prev,
-            currentMeasurement: {
-              ...prev.currentMeasurement,
-              points: [...prev.currentMeasurement.points, pos]
-            }
-          }))
-          break
-      }
-    }
-    
-    // Handle polyline tool that doesn't use isDrawing
-    if (activeTool === 'polyline' && toolState.currentMeasurement) {
-      setToolState(prev => ({
-        ...prev,
-        currentMeasurement: {
-          ...prev.currentMeasurement,
-          points: [...prev.currentMeasurement.points, pos]
-        }
-      }))
-    }
-  }
-
-  // Unified Tool System - Mouse Up Handler
-  const handleMouseUp = (e: React.MouseEvent) => {
-    // Only handle events for drawing tools, let ImageViewer handle select tool
-    if (activeTool === 'select') {
-      return // Let ImageViewer handle this
-    }
-    
-    e.preventDefault()
-    e.stopPropagation()
-
-    if (toolState.isDrawing) {
-      switch (activeTool) {
-        case 'brush':
-          // Brush tool doesn't need to save path - effects are applied directly to image
-          break
-
-        case 'rectangle':
-        console.log('Rectangle mouse up triggered, activeTool:', activeTool, 'currentShape:', toolState.currentShape)
-        if (toolState.currentShape) {
-          // Calculate detailed rectangle coordinates
-          const minX = Math.min(toolState.currentShape.start.x, toolState.currentShape.end.x)
-          const maxX = Math.max(toolState.currentShape.start.x, toolState.currentShape.end.x)
-          const minY = Math.min(toolState.currentShape.start.y, toolState.currentShape.end.y)
-          const maxY = Math.max(toolState.currentShape.start.y, toolState.currentShape.end.y)
-          
-          const newShape = {
-            ...toolState.currentShape,
-            id: Date.now(),
-            // Enhanced coordinate data for dataset creation
-            coordinates: {
-              // Corner points
-              topLeft: { x: minX, y: minY },
-              topRight: { x: maxX, y: minY },
-              bottomLeft: { x: minX, y: maxY },
-              bottomRight: { x: maxX, y: maxY },
-              // Center point
-              center: { 
-                x: (minX + maxX) / 2, 
-                y: (minY + maxY) / 2 
-              },
-              // Dimensions
-              width: maxX - minX,
-              height: maxY - minY,
-              // Bounding box (min-max format)
-              bounds: {
-                minX, maxX, minY, maxY
-              },
-              // Normalized coordinates (0-1 range)
-              normalized: {
-                topLeft: { X: minX / (currentImageDimensions?.width || 1), Y: minY / (currentImageDimensions?.height || 1) },
-                topRight: { X: maxX / (currentImageDimensions?.width || 1), Y: minY / (currentImageDimensions?.height || 1) },
-                bottomLeft: { X: minX / (currentImageDimensions?.width || 1), Y: maxY / (currentImageDimensions?.height || 1) },
-                bottomRight: { X: maxX / (currentImageDimensions?.width || 1), Y: maxY / (currentImageDimensions?.height || 1) },
-                center: { X: ((minX + maxX) / 2) / (currentImageDimensions?.width || 1), Y: ((minY + maxY) / 2) / (currentImageDimensions?.height || 1) },
-                width: (maxX - minX) / (currentImageDimensions?.width || 1),
-                height: (maxY - minY) / (currentImageDimensions?.height || 1)
-              }
-            },
-            // Image metadata
-            imageSize: currentImageDimensions,
-            createdAt: new Date().toISOString()
-          }
-
-          // Validate ROI before creating
-          console.log('Validating rectangle ROI:', newShape)
-          const isValid = validateROI(newShape)
-          console.log('Rectangle ROI validation result:', isValid)
-          if (isValid) {
-            // Regular rectangle ROI
-            setDrawingShapes((prev: any[]) => [...prev, newShape])
-            saveToHistory()
-            
-            // Automatically prompt for label
-            setSelectedShapeForLabel(newShape)
-            setModalType('roi-label')
-            setModalText('')
-            setShowTextModal(true)
-          } else {
-            // Show feedback for invalid ROI
-            setValidationMessage('ROI too small. Please draw a larger area (minimum 20x20 pixels).')
-            setShowValidationMessage(true)
-            setTimeout(() => setShowValidationMessage(false), 3000)
-          }
-        }
-        break
-
-      case 'ellipse':
-        console.log('Ellipse mouse up triggered, activeTool:', activeTool, 'currentShape:', toolState.currentShape)
-        if (toolState.currentShape) {
-          // Calculate detailed ellipse coordinates
-          const centerX = (toolState.currentShape.start.x + toolState.currentShape.end.x) / 2
-          const centerY = (toolState.currentShape.start.y + toolState.currentShape.end.y) / 2
-          const radiusX = Math.abs(toolState.currentShape.end.x - toolState.currentShape.start.x) / 2
-          const radiusY = Math.abs(toolState.currentShape.end.y - toolState.currentShape.start.y) / 2
-          
-          const minX = centerX - radiusX
-          const maxX = centerX + radiusX
-          const minY = centerY - radiusY
-          const maxY = centerY + radiusY
-          
-          const newShape = {
-            ...toolState.currentShape,
-            id: Date.now(),
-            // Enhanced coordinate data for dataset creation
-            coordinates: {
-              // Center and radii
-              center: { x: centerX, y: centerY },
-              radiusX: radiusX,
-              radiusY: radiusY,
-              // Bounding box
-              bounds: {
-                minX, maxX, minY, maxY
-              },
-              // Corner points of bounding box
-              topLeft: { x: minX, y: minY },
-              topRight: { x: maxX, y: minY },
-              bottomLeft: { x: minX, y: maxY },
-              bottomRight: { x: maxX, y: maxY },
-              // Dimensions
-              width: maxX - minX,
-              height: maxY - minY,
-              // Normalized coordinates (0-1 range)
-              normalized: {
-                center: { X: centerX / (currentImageDimensions?.width || 1), Y: centerY / (currentImageDimensions?.height || 1) },
-                radiusX: radiusX / (currentImageDimensions?.width || 1),
-                radiusY: radiusY / (currentImageDimensions?.height || 1),
-                topLeft: { X: minX / (currentImageDimensions?.width || 1), Y: minY / (currentImageDimensions?.height || 1) },
-                topRight: { X: maxX / (currentImageDimensions?.width || 1), Y: minY / (currentImageDimensions?.height || 1) },
-                bottomLeft: { X: minX / (currentImageDimensions?.width || 1), Y: maxY / (currentImageDimensions?.height || 1) },
-                bottomRight: { X: maxX / (currentImageDimensions?.width || 1), Y: maxY / (currentImageDimensions?.height || 1) },
-                width: (maxX - minX) / (currentImageDimensions?.width || 1),
-                height: (maxY - minY) / (currentImageDimensions?.height || 1)
-              }
-            },
-            // Image metadata
-            imageSize: currentImageDimensions,
-            createdAt: new Date().toISOString()
-          }
-
-          // Validate ROI before creating
-          console.log('Validating ellipse ROI:', newShape)
-          const isValid = validateROI(newShape)
-          console.log('Ellipse ROI validation result:', isValid)
-          if (isValid) {
-              // Always add the ellipse as a ROI shape
-              setDrawingShapes((prev: any[]) => [...prev, newShape])
-              
-              
-                saveToHistory()
-                
-                // Automatically prompt for label
-                setSelectedShapeForLabel(newShape)
-                setModalType('roi-label')
-                setModalText('')
-                setShowTextModal(true)
-            } else {
-              // Show feedback for invalid ROI
-              setValidationMessage('ROI too small. Please draw a larger area (minimum 20x20 pixels).')
-              setShowValidationMessage(true)
-              setTimeout(() => setShowValidationMessage(false), 3000)
-            }
-          }
-          break
-
-        case 'length':
-          if (toolState.currentShape) {
-            const newShape = {
-              ...toolState.currentShape,
-              id: Date.now()
-            }
-            
-            // Calculate distance for length measurement
-            const distance = calculateDistance(newShape.start, newShape.end)
-            const measurement = {
-              id: Date.now(),
-              type: 'length',
-              start: newShape.start,
-              end: newShape.end,
-              distance: distance,
-              formattedDistance: formatMeasurement(distance),
-              color: newShape.color,
-              timestamp: new Date().toISOString()
-            }
-            
-            // Validate measurement before creating
-            if (distance >= MIN_DISTANCE) {
-              setMeasurementLines((prev: any[]) => [...prev, measurement])
-              saveToHistory()
-            } else {
-              setValidationMessage('Measurement too short. Please draw a longer line (minimum 15 pixels).')
-              setShowValidationMessage(true)
-              setTimeout(() => setShowValidationMessage(false), 3000)
-            }
-          }
-          break
-
-        case 'arrow':
-          if (toolState.currentShape) {
-            const newShape = {
-              ...toolState.currentShape,
-              id: Date.now()
-            }
-            
-            // Validate ROI before creating
-            if (validateROI(newShape)) {
-              setDrawingShapes((prev: any[]) => [...prev, newShape])
-              saveToHistory()
-              // No automatic label prompt for arrows
-            } else {
-              // Show feedback for invalid ROI
-              setValidationMessage('Arrow too short. Please draw a longer arrow (minimum 15 pixels).')
-              setShowValidationMessage(true)
-              setTimeout(() => setShowValidationMessage(false), 3000)
-            }
-          }
-          break
-
-      case 'ellipseStats':
-        console.log('EllipseStats mouse up triggered, activeTool:', activeTool, 'currentShape:', toolState.currentShape)
-        if (toolState.currentShape) {
-          // Calculate ellipse coordinates for measurement
-          const centerX = (toolState.currentShape.start.x + toolState.currentShape.end.x) / 2
-          const centerY = (toolState.currentShape.start.y + toolState.currentShape.end.y) / 2
-          const radiusX = Math.abs(toolState.currentShape.end.x - toolState.currentShape.start.x) / 2
-          const radiusY = Math.abs(toolState.currentShape.end.y - toolState.currentShape.start.y) / 2
-          
-          // Validate minimum size
-          const width = radiusX * 2
-          const height = radiusY * 2
-          const isValid = width >= MIN_ROI_SIZE && height >= MIN_ROI_SIZE
-          
-          if (isValid) {
-            // Calculate ellipse statistics
-            const stats = calculateEllipseStats({ x: centerX, y: centerY }, radiusX, radiusY)
-            
-            const ellipseMeasurement = {
-              id: Date.now(),
-              type: 'ellipseStats',
-              center: { x: centerX, y: centerY },
-              radiusX: radiusX,
-              radiusY: radiusY,
-              area: stats.area,
-              circumference: stats.circumference,
-              majorAxis: stats.majorAxis,
-              minorAxis: stats.minorAxis,
-              eccentricity: stats.eccentricity,
-              color: toolState.currentShape.color,
-              timestamp: new Date().toISOString()
-            }
-            
-            setMeasurementLines((prev: any[]) => [...prev, ellipseMeasurement])
-            saveToHistory()
-          } else{
-            // Show feedback for invalid measurement
-            setValidationMessage('Ellipse too small. Please draw a larger area (minimum 20x20 pixels).')
-              setShowValidationMessage(true)
-              setTimeout(() => setShowValidationMessage(false), 3000)
-            }
-          }
-          break
-
-        case 'polygon':
-        case 'lasso':
-          if (toolState.currentShape && toolState.currentShape.points.length > 2) {
-            // Calculate detailed polygon coordinates
-            const points = toolState.currentShape.points
-            const xs = points.map((p: any) => p.x)
-            const ys = points.map((p: any) => p.y)
-            const minX = Math.min(...xs)
-            const maxX = Math.max(...xs)
-            const minY = Math.min(...ys)
-            const maxY = Math.max(...ys)
-            
-            // Calculate polygon area
-            let area = 0
-            for (let i = 0; i < points.length; i++) {
-              const j = (i + 1) % points.length
-              area += (points[i].x * points[j].y - points[j].x * points[i].y)
-            }
-            area = Math.abs(area) / 2
-            
-            const newShape = {
-              ...toolState.currentShape,
-              id: Date.now(),
-              // Enhanced coordinate data for dataset creation
-              coordinates: {
-                // All polygon points
-                points: points,
-                // Bounding box of polygon
-                bounds: { minX, maxX, minY, maxY },
-                // Center of mass (approximate)
-                center: {
-                  x: points.reduce((sum: number, p: any) => sum + p.x, 0) / points.length,
-                  y: points.reduce((sum: number, p: any) => sum + p.y, 0) / points.length
-                },
-                // Dimensions of bounding box
-                width: maxX - minX,
-                height: maxY - minY,
-                // Polygon area
-                area: area,
-                // Number of points
-                pointCount: points.length,
-                // Normalized coordinates (0-1 range)
-                normalized: {
-                  points: points.map((p: any) => ({
-                    X: p.x / (currentImageDimensions?.width || 1),
-                    Y: p.y / (currentImageDimensions?.height || 1)
-                  })),
-                  bounds: {
-                    minX: minX / (currentImageDimensions?.width || 1),
-                    maxX: maxX / (currentImageDimensions?.width || 1),
-                    minY: minY / (currentImageDimensions?.height || 1),
-                    maxY: maxY / (currentImageDimensions?.height || 1)
-                  },
-                  center: {
-                    X: (points.reduce((sum: number, p: any) => sum + p.x, 0) / points.length) / (currentImageDimensions?.width || 1),
-                    Y: (points.reduce((sum: number, p: any) => sum + p.y, 0) / points.length) / (currentImageDimensions?.height || 1)
-                  },
-                  width: (maxX - minX) / (currentImageDimensions?.width || 1),
-                  height: (maxY - minY) / (currentImageDimensions?.height || 1),
-                  area: area / ((currentImageDimensions?.width || 1) * (currentImageDimensions?.height || 1))
-                }
-              },
-              // Image metadata
-              imageSize: currentImageDimensions,
-              createdAt: new Date().toISOString()
-            }
-            
-            // Validate ROI before creating
-            if (validateROI(newShape)) {
-              setDrawingShapes((prev: any[]) => [...prev, newShape])
-              saveToHistory()
-              
-              // Automatically prompt for label
-              setSelectedShapeForLabel(newShape)
-              setModalType('roi-label')
-              setModalText('')
-              setShowTextModal(true)
-            } else {
-              // Show feedback for invalid ROI
-              setValidationMessage('ROI too small. Please draw a larger area with more meaningful shape.')
-              setShowValidationMessage(true)
-              setTimeout(() => setShowValidationMessage(false), 3000)
-            }
-          }
-          break
-
-
-        case 'polyline':
-          if (toolState.currentMeasurement && toolState.currentMeasurement.points.length > 1) {
-            const newMeasurement = {
-              ...toolState.currentMeasurement,
-              id: Date.now()
-            }
-            
-            // Calculate total length for polyline measurement
-            let totalLength = 0
-            for (let i = 0; i < newMeasurement.points.length - 1; i++) {
-              totalLength += calculateDistance(newMeasurement.points[i], newMeasurement.points[i + 1])
-            }
-            
-            const measurement = {
-              ...newMeasurement,
-              totalLength: totalLength,
-              formattedLength: formatMeasurement(totalLength)
-            }
-            
-            // Validate measurement before creating
-            if (totalLength >= MIN_DISTANCE) {
-              setMeasurementLines((prev: any[]) => [...prev, measurement])
-              saveToHistory()
-            } else {
-              // Show feedback for invalid measurement
-              setValidationMessage('Polyline too short. Please draw a longer polyline.')
-              setShowValidationMessage(true)
-              setTimeout(() => setShowValidationMessage(false), 3000)
-            }
-          }
-          break
-      }
-
-      // Reset tool state (reset currentShape for all tools - measurements persist via measurementLines)
-      setToolState(prev => ({
-        ...prev,
-        isDrawing: false,
-        currentPath: [],
-        currentShape: null,
-        currentMeasurement: null
-      }))
-    }
-  }
-
-
-  const handleWheel = (e: React.WheelEvent) => {
-    // Only handle wheel events for drawing tools, let ImageViewer handle select tool
-    if (activeTool === 'select') {
-      return // Let ImageViewer handle this
-    }
-    
-    e.preventDefault()
-    const delta = e.deltaY > 0 ? 0.9 : 1.1
-    setZoom(prev => Math.max(0.1, Math.min(5, prev * delta)))
-  }
-
-  const resetView = () => {
-    setZoom(1)
-    setPan({ x: 0, y: 0 })
-  }
-
-  const exportAnnotations = () => {
-    const data = {
-      shapes: drawingShapes,
-      textAnnotations,
-      measurements: measurementLines,
-      metadata: {
-        patient: meta?.patient,
-        caseId: meta?.caseId,
-        exportDate: new Date().toISOString()
-      }
-    }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `annotations-${meta?.caseId || analysisId}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const exportReport = () => {
-    const blob = new Blob([meta?.findings || ''], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `analysis-${analysisId}.txt`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  // Modal handlers
-  const handleModalSubmit = () => {
-    if (modalText.trim()) {
-      const color = labels.find(l => l.id === activeLabel)?.color || '#ff0000'
-      
-      if (modalType === 'text') {
-        const newText = {
-          id: Date.now(),
-          type: 'text',
-          x: modalPosition.x,
-          y: modalPosition.y,
-          text: modalText.trim(),
-          color
-        }
-        setTextAnnotations((prev: any[]) => [...prev, newText])
-      } else if (modalType === 'comment') {
-        const newComment = {
-          id: Date.now(),
-          type: 'comment',
-          x: modalPosition.x,
-          y: modalPosition.y,
-          text: modalText.trim(),
-          color: '#ffff00',
-          timestamp: new Date().toISOString()
-        }
-        setTextAnnotations((prev: any[]) => [...prev, newComment])
-      } else if (modalType === 'roi-label' && selectedShapeForLabel) {
-        // Update the shape with the new label and persist a linked text annotation for clean deletion
-        const newLabel = modalText.trim()
-        setDrawingShapes((prev: any[]) => prev.map(shape => 
-          shape.id === selectedShapeForLabel.id 
-            ? { ...shape, label: newLabel }
-            : shape
-        ))
-        // Also store a hidden linked text annotation so deletion can cascade
-        const labelAnnotation = {
-          id: Date.now(),
-          type: 'text',
-          x: selectedShapeForLabel.start ? Math.min(selectedShapeForLabel.start.x, selectedShapeForLabel.end.x) - 5 : (selectedShapeForLabel.x || 0),
-          y: selectedShapeForLabel.start ? Math.min(selectedShapeForLabel.start.y, selectedShapeForLabel.end.y) - 30 : (selectedShapeForLabel.y || 0),
-          text: newLabel,
-          color: '#ffffff',
-          linkedShapeId: selectedShapeForLabel.id,
-          hidden: true
-        }
-        setTextAnnotations((prev: any[]) => [...prev, labelAnnotation])
-      }
-      
-      saveToHistory()
-    }
-    
-    setShowTextModal(false)
-    setModalText('')
-    setSelectedShapeForLabel(null)
-  }
-
-  const handleModalCancel = () => {
-    setShowTextModal(false)
-    setModalText('')
-    setSelectedShapeForLabel(null)
-  }
-
-  const handleModalKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      handleModalSubmit()
-    } else if (e.key === 'Escape') {
-      handleModalCancel()
-    }
-  }
-
-  // Annotation selection and deletion
-  const handleAnnotationClick = (e: React.MouseEvent, id: string, type: 'shape' | 'text' | 'measurement') => {
-    e.stopPropagation()
-    
-    // Completely prevent double-click events
-    if (e.detail > 1) {
-      e.preventDefault()
-      e.stopPropagation()
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'application/dicom']
+    if (!validTypes.includes(file.type) && !file.name.toLowerCase().endsWith('.dcm')) {
+      alert('Please upload a valid image file (JPEG, PNG, GIF) or DICOM file')
       return
     }
     
-    setSelectedAnnotation(id)
-    setSelectedAnnotationType(type)
-  }
+    try {
+      setUploading(true)
+      const formData = new FormData()
+      formData.append('image', file)
 
-  // Double-click functionality removed - labels are now automatically prompted on ROI creation
+      const response = await api.post(`/api/scans/${analysisId}/images`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
 
-  // ROI validation constants
-  const MIN_ROI_SIZE = 20 // Minimum width/height in pixels
-  const MIN_DISTANCE = 15 // Minimum distance between points
-  const MIN_POLYGON_POINTS = 3 // Minimum points for polygon/lasso
-  const MIN_POLYGON_AREA = 100 // Minimum area for polygon/lasso (pixels squared)
-
-  // Calculate polygon area using shoelace formula
-  const calculatePolygonArea = (points: any[]): number => {
-    if (points.length < 3) return 0
-    
-    let area = 0
-    for (let i = 0; i < points.length; i++) {
-      const j = (i + 1) % points.length
-      area += points[i].x * points[j].y
-      area -= points[j].x * points[i].y
-    }
-    return Math.abs(area) / 2
-  }
-
-  // Check if polygon has meaningful area (not just a line or dot)
-  const hasValidPolygonArea = (points: any[]): boolean => {
-    if (points.length < 3) return false
-    
-    // Calculate bounding box
-    const xs = points.map(p => p.x)
-    const ys = points.map(p => p.y)
-    const minX = Math.min(...xs)
-    const maxX = Math.max(...xs)
-    const minY = Math.min(...ys)
-    const maxY = Math.max(...ys)
-    
-    const width = maxX - minX
-    const height = maxY - minY
-    
-    // Must have reasonable dimensions
-    if (width < 10 || height < 10) return false
-    
-    // Calculate actual polygon area
-    const area = calculatePolygonArea(points)
-    return area >= MIN_POLYGON_AREA
-  }
-
-  // Validate ROI shape before creation
-  const validateROI = (shape: any): boolean => {
-    switch (shape.type) {
-      case 'rectangle':
-      case 'ellipse':
-      case 'length':
-        const width = Math.abs(shape.end.x - shape.start.x)
-        const height = Math.abs(shape.end.y - shape.start.y)
-        console.log(`ROI validation - Type: ${shape.type}, Width: ${width}, Height: ${height}, MIN_ROI_SIZE: ${MIN_ROI_SIZE}`)
-        const isValid = width >= MIN_ROI_SIZE && height >= MIN_ROI_SIZE
-        console.log(`ROI validation result: ${isValid}`)
-        return isValid
-
-      case 'polygon':
-      case 'lasso':
-        if (shape.points.length < MIN_POLYGON_POINTS) return false
-        
-        // Check for meaningful area instead of strict distance
-        return hasValidPolygonArea(shape.points)
-
-      case 'arrow':
-        const arrowDistance = Math.sqrt(
-          Math.pow(shape.end.x - shape.start.x, 2) + 
-          Math.pow(shape.end.y - shape.start.y, 2)
-        )
-        return arrowDistance >= MIN_DISTANCE
-
-      case 'marker':
-        // Markers are always valid (single point)
-        return true
-
-      default:
-        return true
-    }
-  }
-
-  // Image Processing Functions
-  const initializeImageCanvas = () => {
-    // Find the image element in the ImageViewer
-    const imageElement = document.querySelector('img') as HTMLImageElement
-    if (!imageElement) return
-    
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    
-    canvas.width = imageElement.naturalWidth || imageElement.width
-    canvas.height = imageElement.naturalHeight || imageElement.height
-    
-    // Draw the image onto the canvas
-    ctx.drawImage(imageElement, 0, 0)
-    
-    // Store original image data for restoration
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-    
-    setImageCanvas(canvas)
-    setImageContext(ctx)
-    setOriginalImageData(imageData)
-  }
-
-  const applyBrushEffect = (x: number, y: number, radius: number, color: string, opacity: number) => {
-    if (!imageContext || !imageCanvas) return
-    
-    const ctx = imageContext
-    ctx.globalCompositeOperation = 'source-over'
-    ctx.globalAlpha = opacity
-    
-    // Create brush effect with soft edges
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius)
-    gradient.addColorStop(0, color)
-    gradient.addColorStop(1, 'transparent')
-    
-    ctx.fillStyle = gradient
-    ctx.beginPath()
-    ctx.arc(x, y, radius, 0, Math.PI * 2)
-    ctx.fill()
-    
-    // Update the displayed image
-    const imageElement = document.querySelector('img') as HTMLImageElement
-    if (imageElement) {
-      imageElement.src = imageCanvas.toDataURL()
-    }
-  }
-
-
-  const applyThresholdEffect = (x: number, y: number, threshold: number) => {
-    if (!imageContext || !imageCanvas) return
-    
-    const ctx = imageContext
-    const imageData = ctx.getImageData(0, 0, imageCanvas.width, imageCanvas.height)
-    const data = imageData.data
-    
-    // Get pixel value at click point
-    const pixelIndex = (Math.floor(y) * imageCanvas.width + Math.floor(x)) * 4
-    const r = data[pixelIndex]
-    const g = data[pixelIndex + 1]
-    const b = data[pixelIndex + 2]
-    const intensity = (r + g + b) / 3
-    
-    // Apply threshold to similar pixels
-    for (let i = 0; i < data.length; i += 4) {
-      const pixelIntensity = (data[i] + data[i + 1] + data[i + 2]) / 3
-      if (Math.abs(pixelIntensity - intensity) <= threshold) {
-        data[i] = 255     // R
-        data[i + 1] = 0   // G
-        data[i + 2] = 0   // B
-        data[i + 3] = 255 // A
+      // Reload images to get the updated list
+      const imagesResponse = await api.get(`/api/scans/${analysisId}/images`)
+      const imagesData = imagesResponse.data?.data?.images
+      
+      if (imagesData && imagesData.length > 0) {
+        setFiles(imagesData)
+        // Don't change the selected image - keep the current one displayed
+        // The new thumbnail will be added to the thumbnail bar
+        console.log('✅ Images refreshed after upload:', imagesData.length)
       }
-    }
-    
-    ctx.putImageData(imageData, 0, 0)
-    
-    // Update the displayed image
-    const imageElement = document.querySelector('img') as HTMLImageElement
-    if (imageElement) {
-      imageElement.src = imageCanvas.toDataURL()
+
+      if (fileInputRef.current) { fileInputRef.current.value = '' }
+      alert('Image uploaded successfully!')
+    } catch (error: any) {
+      alert(`Failed to upload image: ${error.response?.data?.message || error.message || 'Unknown error'}`)
+    } finally {
+      setUploading(false)
     }
   }
 
-  const applyRegionGrowEffect = (x: number, y: number, tolerance: number) => {
-    if (!imageContext || !imageCanvas) return
-    
-    const ctx = imageContext
-    const imageData = ctx.getImageData(0, 0, imageCanvas.width, imageCanvas.height)
-    const data = imageData.data
-    const width = imageCanvas.width
-    const height = imageCanvas.height
-    
-    // Get seed pixel
-    const seedIndex = (Math.floor(y) * width + Math.floor(x)) * 4
-    const seedR = data[seedIndex]
-    const seedG = data[seedIndex + 1]
-    const seedB = data[seedIndex + 2]
-    
-    // Flood fill algorithm
-    const visited = new Set<number>()
-    const queue = [{ x: Math.floor(x), y: Math.floor(y) }]
-    
-    while (queue.length > 0) {
-      const { x: px, y: py } = queue.shift()!
-      const index = (py * width + px) * 4
-      
-      if (px < 0 || px >= width || py < 0 || py >= height || visited.has(index)) continue
-      visited.add(index)
-      
-      const r = data[index]
-      const g = data[index + 1]
-      const b = data[index + 2]
-      
-      // Check if pixel is within tolerance
-      const distance = Math.sqrt(
-        Math.pow(r - seedR, 2) + 
-        Math.pow(g - seedG, 2) + 
-        Math.pow(b - seedB, 2)
-      )
-      
-      if (distance <= tolerance) {
-        // Mark pixel
-        data[index] = 0     // R
-        data[index + 1] = 255   // G
-        data[index + 2] = 0   // B
-        data[index + 3] = 255 // A
-        
-        // Add neighbors to queue
-        queue.push({ x: px + 1, y: py })
-        queue.push({ x: px - 1, y: py })
-        queue.push({ x: px, y: py + 1 })
-        queue.push({ x: px, y: py - 1 })
-      }
-    }
-    
-    ctx.putImageData(imageData, 0, 0)
-    
-    // Update the displayed image
-    const imageElement = document.querySelector('img') as HTMLImageElement
-    if (imageElement) {
-      imageElement.src = imageCanvas.toDataURL()
+  const handleAddImageClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
     }
   }
 
-  const applyFillEffect = (x: number, y: number, fillColor: string) => {
-    if (!imageContext || !imageCanvas) return
-    
-    const ctx = imageContext
-    const imageData = ctx.getImageData(0, 0, imageCanvas.width, imageCanvas.height)
-    const data = imageData.data
-    const width = imageCanvas.width
-    const height = imageCanvas.height
-    
-    // Get target color
-    const targetIndex = (Math.floor(y) * width + Math.floor(x)) * 4
-    const targetR = data[targetIndex]
-    const targetG = data[targetIndex + 1]
-    const targetB = data[targetIndex + 2]
-    
-    // Parse fill color
-    const fillR = parseInt(fillColor.slice(1, 3), 16)
-    const fillG = parseInt(fillColor.slice(3, 5), 16)
-    const fillB = parseInt(fillColor.slice(5, 7), 16)
-    
-    // Flood fill
-    const visited = new Set<number>()
-    const queue = [{ x: Math.floor(x), y: Math.floor(y) }]
-    
-    while (queue.length > 0) {
-      const { x: px, y: py } = queue.shift()!
-      const index = (py * width + px) * 4
-      
-      if (px < 0 || px >= width || py < 0 || py >= height || visited.has(index)) continue
-      visited.add(index)
-      
-      const r = data[index]
-      const g = data[index + 1]
-      const b = data[index + 2]
-      
-      // Check if pixel matches target color
-      if (r === targetR && g === targetG && b === targetB) {
-        data[index] = fillR
-        data[index + 1] = fillG
-        data[index + 2] = fillB
-        
-        // Add neighbors to queue
-        queue.push({ x: px + 1, y: py })
-        queue.push({ x: px - 1, y: py })
-        queue.push({ x: px, y: py + 1 })
-        queue.push({ x: px, y: py - 1 })
-      }
+  // Helper function to get analysis type display name
+  const getAnalysisTypeDisplayName = (analysisType: string) => {
+    const typeMap: { [key: string]: string } = {
+      'auto': 'Auto-detect (Recommended)',
+      'brain_tumor': 'Brain Tumor Analysis',
+      'breast_cancer': 'Breast Cancer Detection',
+      'lung_tumor': 'Lung Tumor Analysis',
+      'ct_to_mri': 'CT to MRI Conversion',
+      'mri_to_ct': 'MRI to CT Conversion'
     }
+    return typeMap[analysisType] || analysisType
+  }
+
+  // Enhanced analysis handlers
+  const handleStartAnalysis = async () => {
+    if (!analysisId || !meta?.analysisType) return
     
-    ctx.putImageData(imageData, 0, 0)
-    
-    // Update the displayed image
-    const imageElement = document.querySelector('img') as HTMLImageElement
-    if (imageElement) {
-      imageElement.src = imageCanvas.toDataURL()
+    try {
+      await startAnalysis(meta.analysisType)
+    } catch (error) {
+      console.error('Failed to start analysis:', error)
     }
   }
 
-  const applySmoothEffect = (x: number, y: number, radius: number) => {
-    if (!imageContext || !imageCanvas) return
+  const handleRetryAnalysis = async () => {
+    if (!analysisId || !meta?.analysisType) return
     
-    const ctx = imageContext
-    const imageData = ctx.getImageData(0, 0, imageCanvas.width, imageCanvas.height)
-    const data = imageData.data
-    const width = imageCanvas.width
-    const height = imageCanvas.height
-    
-    // Apply Gaussian blur in the specified region
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        const px = Math.floor(x + dx)
-        const py = Math.floor(y + dy)
-        
-        if (px >= 0 && px < width && py >= 0 && py < height) {
-          const distance = Math.sqrt(dx * dx + dy * dy)
-          if (distance <= radius) {
-            const index = (py * width + px) * 4
-            
-            // Simple smoothing (average with neighbors)
-            let r = 0, g = 0, b = 0, count = 0
-            
-            for (let sy = -1; sy <= 1; sy++) {
-              for (let sx = -1; sx <= 1; sx++) {
-                const spx = px + sx
-                const spy = py + sy
-                if (spx >= 0 && spx < width && spy >= 0 && spy < height) {
-                  const sindex = (spy * width + spx) * 4
-                  r += data[sindex]
-                  g += data[sindex + 1]
-                  b += data[sindex + 2]
-                  count++
-                }
-              }
-            }
-            
-            data[index] = r / count
-            data[index + 1] = g / count
-            data[index + 2] = b / count
-          }
-        }
-      }
-    }
-    
-    ctx.putImageData(imageData, 0, 0)
-    
-    // Update the displayed image
-    const imageElement = document.querySelector('img') as HTMLImageElement
-    if (imageElement) {
-      imageElement.src = imageCanvas.toDataURL()
-    }
+    clearError()
+    await startAnalysis(meta.analysisType, undefined, { force: true })
   }
 
-  const applyInterpolateEffect = (x: number, y: number, radius: number) => {
-    if (!imageContext || !imageCanvas) return
-    
-    const ctx = imageContext
-    const imageData = ctx.getImageData(0, 0, imageCanvas.width, imageCanvas.height)
-    const data = imageData.data
-    const width = imageCanvas.width
-    const height = imageCanvas.height
-    
-    // Find edge pixels in the region
-    const edgePixels: { x: number; y: number; r: number; g: number; b: number }[] = []
-    
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        const px = Math.floor(x + dx)
-        const py = Math.floor(y + dy)
-        
-        if (px >= 0 && px < width && py >= 0 && py < height) {
-          const distance = Math.sqrt(dx * dx + dy * dy)
-          if (distance <= radius) {
-            const index = (py * width + px) * 4
-            
-            // Simple edge detection (gradient)
-            const centerR = data[index]
-            const centerG = data[index + 1]
-            const centerB = data[index + 2]
-            
-            let maxDiff = 0
-            for (let sy = -1; sy <= 1; sy++) {
-              for (let sx = -1; sx <= 1; sx++) {
-                if (sx === 0 && sy === 0) continue
-                const spx = px + sx
-                const spy = py + sy
-                if (spx >= 0 && spx < width && spy >= 0 && spy < height) {
-                  const sindex = (spy * width + spx) * 4
-                  const diff = Math.abs(data[sindex] - centerR) + 
-                              Math.abs(data[sindex + 1] - centerG) + 
-                              Math.abs(data[sindex + 2] - centerB)
-                  maxDiff = Math.max(maxDiff, diff)
-                }
-              }
-            }
-            
-            if (maxDiff > 50) { // Edge threshold
-              edgePixels.push({ x: px, y: py, r: centerR, g: centerG, b: centerB })
-            }
-          }
-        }
-      }
-    }
-    
-    // Interpolate between edge pixels
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        const px = Math.floor(x + dx)
-        const py = Math.floor(y + dy)
-        
-        if (px >= 0 && px < width && py >= 0 && py < height) {
-          const distance = Math.sqrt(dx * dx + dy * dy)
-          if (distance <= radius) {
-            const index = (py * width + px) * 4
-            
-            // Find closest edge pixels
-            let minDist1 = Infinity, minDist2 = Infinity
-            let closest1 = edgePixels[0], closest2 = edgePixels[0]
-            
-            for (const edge of edgePixels) {
-              const dist = Math.sqrt(Math.pow(edge.x - px, 2) + Math.pow(edge.y - py, 2))
-              if (dist < minDist1) {
-                minDist2 = minDist1
-                closest2 = closest1
-                minDist1 = dist
-                closest1 = edge
-              } else if (dist < minDist2) {
-                minDist2 = dist
-                closest2 = edge
-              }
-            }
-            
-            if (closest1 && closest2) {
-              // Interpolate between the two closest edge pixels
-              const totalDist = minDist1 + minDist2
-              const weight1 = minDist2 / totalDist
-              const weight2 = minDist1 / totalDist
-              
-              data[index] = closest1.r * weight1 + closest2.r * weight2
-              data[index + 1] = closest1.g * weight1 + closest2.g * weight2
-              data[index + 2] = closest1.b * weight1 + closest2.b * weight2
-            }
-          }
-        }
-      }
-    }
-    
-    ctx.putImageData(imageData, 0, 0)
-    
-    // Update the displayed image
-    const imageElement = document.querySelector('img') as HTMLImageElement
-    if (imageElement) {
-      imageElement.src = imageCanvas.toDataURL()
-    }
+  const handleCancelAnalysis = () => {
+    cancelAnalysis()
   }
 
-  // Measurement Functions
-  const calculateDistance = (point1: any, point2: any): number => {
-    const dx = point2.x - point1.x
-    const dy = point2.y - point1.y
-    return Math.sqrt(dx * dx + dy * dy)
-  }
+  // Prepare export data
+  const exportData: AnalysisReportData | null = useMemo(() => {
+    if (!currentAnalysis || !meta) return null;
 
-  const convertToUnit = (pixels: number): number => {
-    // Ensure pixelToMmRatio is valid
-    const ratio = Math.max(0.01, Math.min(1000, pixelToMmRatio)) || 1
-    
-    switch (measurementUnit) {
-      case 'mm':
-        return pixels / ratio // Convert pixels to mm
-      case 'cm':
-        return (pixels / ratio) / 10 // Convert pixels to cm
-      default:
-        return pixels
-    }
-  }
-
-  const formatMeasurement = (pixels: number): string => {
-    const value = convertToUnit(pixels)
-    const unit = measurementUnit === 'pixels' ? 'px' : measurementUnit
-    
-    // Format with appropriate precision based on unit
-    let formatted: string
-    if (measurementUnit === 'pixels') {
-      formatted = value.toFixed(0) // Whole numbers for pixels
-    } else if (value >= 1000) {
-      formatted = value.toFixed(0) // Whole numbers for large values
-    } else if (value >= 100) {
-      formatted = value.toFixed(1) // 1 decimal for hundreds
-    } else if (value >= 10) {
-      formatted = value.toFixed(2) // 2 decimals for tens
-    } else {
-      formatted = value.toFixed(3) // 3 decimals for small values
-    }
-    
-    return `${formatted} ${unit}`
-  }
-
-
-  const calculateEllipseStats = (center: any, radiusX: number, radiusY: number) => {
-    console.log('Calculating ellipse stats - radiusX:', radiusX, 'radiusY:', radiusY)
-    
-    // Ensure minimum radius to prevent division by zero
-    const safeRadiusX = Math.max(radiusX, 1)
-    const safeRadiusY = Math.max(radiusY, 1)
-    
-    const area = Math.PI * safeRadiusX * safeRadiusY
-    const circumference = Math.PI * (3 * (safeRadiusX + safeRadiusY) - Math.sqrt((3 * safeRadiusX + safeRadiusY) * (safeRadiusX + 3 * safeRadiusY)))
-    const majorAxis = Math.max(safeRadiusX, safeRadiusY) * 2
-    const minorAxis = Math.min(safeRadiusX, safeRadiusY) * 2
-    
-    // Ensure majorAxis is not zero to prevent NaN eccentricity
-    const eccentricity = majorAxis > 0 ? Math.sqrt(1 - Math.pow(minorAxis / majorAxis, 2)) : 0
-    
-    console.log('Ellipse calculations - area:', area, 'circumference:', circumference, 'majorAxis:', majorAxis, 'minorAxis:', minorAxis, 'eccentricity:', eccentricity)
-    
     return {
-      area: formatMeasurement(area),
-      circumference: formatMeasurement(circumference),
-      majorAxis: formatMeasurement(majorAxis),
-      minorAxis: formatMeasurement(minorAxis),
-      eccentricity: eccentricity.toFixed(3)
-    }
-  }
-
-  const getPixelValue = (x: number, y: number): number => {
-    // This would typically get the actual pixel value from the image
-    // For now, return a mock value
-    return Math.random() * 255
-  }
-
-  const calculateVolume = (points: any[]): number => {
-    if (points.length < 3) return 0
-    
-    // Use shoelace formula for area, then estimate volume
-    let area = 0
-    for (let i = 0; i < points.length; i++) {
-      const j = (i + 1) % points.length
-      area += points[i].x * points[j].y
-      area -= points[j].x * points[i].y
-    }
-    area = Math.abs(area) / 2
-    
-    // Estimate depth (this would be more sophisticated in a real implementation)
-    const depth = Math.sqrt(area) * 0.1
-    
-    return area * depth
-  }
-
-  // Get label position for ROI shapes
-  const getLabelPosition = (shape: any) => {
-    switch (shape.type) {
-      case 'rectangle':
-      case 'ellipse':
-      case 'length':
-        return {
-          x: Math.min(shape.start.x, shape.end.x) - 5,
-          y: Math.min(shape.start.y, shape.end.y) - 30
-        }
-      case 'polygon':
-      case 'lasso':
-        return {
-          x: Math.min(...shape.points.map((p: any) => p.x)) - 5,
-          y: Math.min(...shape.points.map((p: any) => p.y)) - 30
-        }
-      case 'arrow':
-        return {
-          x: Math.min(shape.start.x, shape.end.x) - 5,
-          y: Math.min(shape.start.y, shape.end.y) - 30
-        }
-      case 'marker':
-        return {
-          x: shape.x - 5,
-          y: shape.y - 30
-        }
-      default:
-        return { x: 0, y: 0 }
-    }
-  }
-
-  const deleteSelectedAnnotation = React.useCallback(() => {
-    if (selectedAnnotation && selectedAnnotationType) {
-      let nextState: any = {
-        shapes: drawingShapes,
-        textAnnotations,
-        measurements: measurementLines
+      scan: {
+        id: analysisId || '',
+        scanType: meta.scanType || '',
+        bodyPart: meta.bodyPart || '',
+        priority: 'medium', // Default priority
+        status: 'completed',
+        createdAt: new Date().toISOString(),
+        analysisType: meta.analysisType || 'auto'
+      },
+      patient: {
+        firstName: meta.patient?.split(' ')[0] || 'Unknown',
+        lastName: meta.patient?.split(' ').slice(1).join(' ') || 'Patient',
+        dateOfBirth: 'N/A',
+        gender: 'N/A',
+        phone: 'N/A',
+        email: 'N/A'
+      },
+      analysis: {
+        id: currentAnalysis.id,
+        analysisType: currentAnalysis.analysisType,
+        status: currentAnalysis.status,
+        confidence: currentAnalysis.confidence || 0,
+        createdAt: currentAnalysis.createdAt,
+        updatedAt: currentAnalysis.updatedAt,
+        result: currentAnalysis.rawData || {}
+      },
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        exportedBy: 'current-user', // This would come from auth context
+        format: 'pdf'
       }
-      if (selectedAnnotationType === 'shape') {
-        const nextShapes = drawingShapes.filter((shape: any) => shape.id !== selectedAnnotation)
-        // remove any ROI-linked labels/comments
-        const nextText = (textAnnotations || []).filter((annotation: any) => annotation.linkedShapeId !== selectedAnnotation)
-        setDrawingShapes(nextShapes)
-        setTextAnnotations(nextText)
-        nextState = { ...nextState, shapes: nextShapes, textAnnotations: nextText }
-      } else if (selectedAnnotationType === 'text') {
-        const nextText = textAnnotations.filter((annotation: any) => annotation.id !== selectedAnnotation)
-        setTextAnnotations(nextText)
-        nextState = { ...nextState, textAnnotations: nextText }
-      } else if (selectedAnnotationType === 'measurement') {
-        const nextMeas = measurementLines.filter((measurement: any) => measurement.id !== selectedAnnotation)
-        setMeasurementLines(nextMeas)
-        nextState = { ...nextState, measurements: nextMeas }
-      }
-      saveToHistory()
-      setSelectedAnnotation(null)
-      setSelectedAnnotationType(null)
-      // Persist after delete
-      debouncedSaveAnnotations(selected, nextState)
-    }
-  }, [selectedAnnotation, selectedAnnotationType, drawingShapes, textAnnotations, measurementLines, setDrawingShapes, setTextAnnotations, setMeasurementLines, saveToHistory, debouncedSaveAnnotations, selected, setSelectedAnnotation, setSelectedAnnotationType])
+    };
+  }, [currentAnalysis, meta, analysisId]);
 
-  // Keyboard shortcuts
+  // Handle print report
+  const handlePrintReport = async () => {
+    if (!exportData) {
+      alert('No analysis data available to print');
+      return;
+    }
+
+    try {
+      await generateAndPrintReport(exportData);
+    } catch (error) {
+      console.error('Print failed:', error);
+      alert(`Failed to print report: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // Handle smooth thumbnail click
+  const handleThumbnailClick = (imageIndex: number) => {
+    if (imageIndex === selected || isTransitioning) return
+    
+    console.log(`🖼️ Smooth thumbnail click: ${imageIndex}, previous: ${selected}`)
+    
+    // Set transition state
+    setIsTransitioning(true)
+    setPreviousSelected(selected)
+    
+    // Start loading states
+    setIsLoadingImage(true)
+    setIsLoadingAnalysis(true)
+    
+    // Update selected image
+    setSelected(imageIndex)
+    
+    // Clear transition after animation
+    setTimeout(() => {
+      setIsTransitioning(false)
+    }, 400) // Match the transition duration
+  }
+
+  // Handle keyboard navigation
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedAnnotation) {
-          deleteSelectedAnnotation()
-        }
-      } else if (e.key === 'Escape') {
-        setSelectedAnnotation(null)
-        setSelectedAnnotationType(null)
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (files.length <= 1) return
+      
+      switch (event.key) {
+        case 'ArrowLeft':
+          event.preventDefault()
+          if (selected > 0) {
+            handleThumbnailClick(selected - 1)
+          }
+          break
+        case 'ArrowRight':
+          event.preventDefault()
+          if (selected < files.length - 1) {
+            handleThumbnailClick(selected + 1)
+          }
+          break
+        case 'Home':
+          event.preventDefault()
+          if (selected !== 0) {
+            handleThumbnailClick(0)
+          }
+          break
+        case 'End':
+          event.preventDefault()
+          if (selected !== files.length - 1) {
+            handleThumbnailClick(files.length - 1)
+          }
+          break
       }
     }
 
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [selectedAnnotation, selectedAnnotationType, deleteSelectedAnnotation])
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selected, files.length, isTransitioning])
 
-  if (loading) {
+  // Handle image deletion
+  const handleDeleteImage = async (imageIndex: number) => {
+    if (!analysisId) return;
+
+    // Don't allow deleting if it's the last image
+    if (files.length <= 1) {
+      alert('Cannot delete the last image from a scan');
+      return;
+    }
+
+    // Confirm deletion
+    const confirmed = window.confirm(
+      `Are you sure you want to delete this image? This action cannot be undone and will also delete any analysis results for this image.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      console.log('🗑️ Deleting image at index:', imageIndex);
+      
+      const response = await api.delete(`/api/scans/${analysisId}/images?imageIndex=${imageIndex}`);
+      
+      if (response.data.status === 'success') {
+        console.log('✅ Image deleted successfully');
+        
+        // Reload images to get the updated list
+        const imagesResponse = await api.get(`/api/scans/${analysisId}/images`);
+        const imagesData = imagesResponse.data?.data?.images;
+        
+        if (imagesData && imagesData.length > 0) {
+          setFiles(imagesData);
+          
+          // If we deleted the currently selected image, select the first available image
+          if (selected >= imagesData.length) {
+            setSelected(0);
+          } else if (selected > imageIndex) {
+            // If we deleted an image before the selected one, adjust the selection
+            setSelected(selected - 1);
+          }
+          
+          console.log('✅ Images refreshed after deletion:', imagesData.length);
+        } else {
+          console.log('⚠️ No images remaining after deletion');
+        }
+        
+        alert('Image deleted successfully!');
+      } else {
+        throw new Error(response.data.message || 'Failed to delete image');
+      }
+    } catch (error: any) {
+      console.error('❌ Error deleting image:', error);
+      alert(`Failed to delete image: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+    }
+  };
+
     return (
       <MainContainer>
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          height: '100vh',
-          color: '#ccc',
-          fontSize: '16px'
-        }}>
-          Loading analysis...
-        </div>
-      </MainContainer>
-    )
-  }
+      {/* Back Button - Fixed position at top-left */}
+      <BackButton onClick={handleBackToScans} title="Back to Scans" aria-label="Back to Scans">
+        <FaChevronLeft size={18} />
+      </BackButton>
 
-  return (
-    <>
-      {/* Text/Comment Input Modal */}
-      {showTextModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            backdropFilter: 'blur(4px)'
-          }}
-          onClick={handleModalCancel}
-        >
-          <div
-            style={{
-              backgroundColor: '#1a1a1a',
-              border: '1px solid #2a2a2a',
-              borderRadius: '12px',
-              padding: '24px',
-              minWidth: '400px',
-              maxWidth: '600px',
-              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
-              transform: 'scale(1)',
-              animation: 'modalSlideIn 0.2s ease-out'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              marginBottom: '20px',
-              paddingBottom: '16px',
-              borderBottom: '1px solid #2a2a2a'
-            }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                backgroundColor: modalType === 'comment' ? '#ffff00' : '#0694fb',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: '12px'
-              }}>
-                {modalType === 'comment' ? '💬' : '📝'}
-              </div>
-              <div>
-                <h3 style={{
-                  margin: 0,
-                  color: 'white',
-                  fontSize: '18px',
-                  fontWeight: '600'
-                }}>
-                  {modalType === 'comment' ? 'Add Comment' : 
-                   modalType === 'roi-label' ? 'Label ROI' : 'Add Text Annotation'}
-                </h3>
-                <p style={{
-                  margin: '4px 0 0 0',
-                  color: '#8aa',
-                  fontSize: '14px'
-                }}>
-                  {modalType === 'comment' 
-                    ? 'Add a comment with timestamp for this location' 
-                    : modalType === 'roi-label'
-                    ? 'Add a descriptive label for this region of interest'
-                    : 'Add text annotation at the selected position'
-                  }
-                </p>
-              </div>
-            </div>
-
-            {/* Modal Body */}
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{
-                display: 'block',
-                color: 'white',
-                fontSize: '14px',
-                fontWeight: '500',
-                marginBottom: '8px'
-              }}>
-                {modalType === 'comment' ? 'Comment' : 'Text'}
-              </label>
-              <textarea
-                value={modalText}
-                onChange={(e) => setModalText(e.target.value)}
-                onKeyDown={handleModalKeyDown}
-                placeholder={modalType === 'comment' 
-                  ? 'Enter your comment here...' 
-                  : modalType === 'roi-label'
-                  ? 'e.g., Malignant, Benign, Lesion, Tumor...'
-                  : 'Enter text annotation here...'
-                }
-                style={{
-                  width: '100%',
-                  minHeight: '120px',
-                  padding: '12px',
-                  backgroundColor: '#2a2a2a',
-                  border: '1px solid #444',
-                  borderRadius: '8px',
-                  color: 'white',
-                  fontSize: '14px',
-                  fontFamily: 'inherit',
-                  resize: 'vertical',
-                  outline: 'none',
-                  transition: 'border-color 0.2s ease'
-                }}
-                autoFocus
-              />
-              <div style={{
-                marginTop: '8px',
-                fontSize: '12px',
-                color: '#8aa'
-              }}>
-                Press <kbd style={{
-                  backgroundColor: '#444',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  fontSize: '11px'
-                }}>Ctrl+Enter</kbd> to submit, <kbd style={{
-                  backgroundColor: '#444',
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  fontSize: '11px'
-                }}>Esc</kbd> to cancel
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: '12px'
-            }}>
-              <button
-                onClick={handleModalCancel}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: 'transparent',
-                  border: '1px solid #444',
-                  borderRadius: '6px',
-                  color: '#8aa',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.borderColor = '#666'
-                  e.currentTarget.style.color = 'white'
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.borderColor = '#444'
-                  e.currentTarget.style.color = '#8aa'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleModalSubmit}
-                disabled={!modalText.trim()}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: modalType === 'comment' ? '#ffff00' : '#0694fb',
-                  border: 'none',
-                  borderRadius: '6px',
-                  color: modalType === 'comment' ? '#000' : 'white',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: modalText.trim() ? 'pointer' : 'not-allowed',
-                  opacity: modalText.trim() ? 1 : 0.5,
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseOver={(e) => {
-                  if (modalText.trim()) {
-                    e.currentTarget.style.transform = 'translateY(-1px)'
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)'
-                  }
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)'
-                  e.currentTarget.style.boxShadow = 'none'
-                }}
-              >
-                {modalType === 'comment' ? 'Add Comment' : 'Add Text'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-    <MainContainer>
       {/* Content Area */}
       <ContentArea>
-        {/* Tools Sidebar - Left */}
-        <CollapsibleToolsSidebar $collapsed={leftPanelCollapsed}>
-          <PanelToggleButton onClick={toggleLeftPanel} title="Toggle Sidebar">
-            {leftPanelCollapsed ? <FaChevronRight size={14} /> : <FaChevronLeft size={14} />}
-          </PanelToggleButton>
-          
-          {!leftPanelCollapsed && (
-            <>
-          <SidebarHeader>
-            <SidebarTitle>Annotation Tools</SidebarTitle>
-            <div style={{ fontSize: '12px', color: '#8aa' }}>
-              Active: {activeTool.charAt(0).toUpperCase() + activeTool.slice(1)}
-            </div>
-          </SidebarHeader>
-          
-              {/* Accordion Sections */}
-              <div style={{ overflow: 'auto', flex: 1 }}>
-                {/* Selection & Visibility Accordion */}
-                <AccordionSection>
-                  <AccordionHeader onClick={() => toggleAccordion('selection')}>
-                    <span>Selection & Visibility</span>
-                    <AccordionIcon className={accordionStates.selection ? 'expanded' : ''}>
-                      <FaChevronRight size={12} />
-                    </AccordionIcon>
-                  </AccordionHeader>
-                  <AccordionContent $expanded={accordionStates.selection}>
-                    
-                    <CompactToolGrid>
-                <ToolButton $isActive={activeTool === 'select'} onClick={() => setActiveTool('select')} title="Select/Move (V)">
-                  <FaMousePointer size={14} />
-                </ToolButton>
-                <ToolButton $isActive={overlayVisible} onClick={() => setOverlayVisible(!overlayVisible)} title="Overlay Toggle (O)">
-                  <FaEye size={14} />
-                </ToolButton>
-                    </CompactToolGrid>
-                    
-                    <InputGroup>
-                      <LabeledInput>
-                <FaSlidersH size={12} style={{ color: '#8aa' }} />
-                        <span>Opacity:</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={overlayOpacity}
-                  onChange={(e) => setOverlayOpacity(Number(e.target.value))}
-                  title="Overlay Opacity"
-                />
-                        <span>{overlayOpacity}%</span>
-                      </LabeledInput>
-                    </InputGroup>
-                    
-                  </AccordionContent>
-                </AccordionSection>
-
-                {/* ROI & Markup Accordion */}
-                <AccordionSection>
-                  <AccordionHeader onClick={() => toggleAccordion('roi')}>
-                    <span>ROI & Markup</span>
-                    <AccordionIcon className={accordionStates.roi ? 'expanded' : ''}>
-                      <FaChevronRight size={12} />
-                    </AccordionIcon>
-                  </AccordionHeader>
-                  <AccordionContent $expanded={accordionStates.roi}>
-                    <ToolGrid>
-                <ToolButton $isActive={activeTool === 'rectangle'} onClick={() => setActiveTool('rectangle')} title="Rectangle ROI (R)">
-                  <FaSquare size={14} />
-                </ToolButton>
-                <ToolButton $isActive={activeTool === 'ellipse'} onClick={() => setActiveTool('ellipse')} title="Ellipse ROI (E)">
-                  <FaCircle size={14} />
-                </ToolButton>
-                <ToolButton $isActive={activeTool === 'polygon'} onClick={() => setActiveTool('polygon')} title="Polygon ROI (P)">
-                  <FaDrawPolygon size={14} />
-                </ToolButton>
-                <ToolButton $isActive={activeTool === 'lasso'} onClick={() => setActiveTool('lasso')} title="Freehand Lasso (L)">
-                  <FaHands size={14} />
-                </ToolButton>
-                <ToolButton $isActive={activeTool === 'marker'} onClick={() => setActiveTool('marker')} title="Point/Marker (M)">
-                  <FaMapMarkerAlt size={14} />
-                </ToolButton>
-                <ToolButton $isActive={activeTool === 'arrow'} onClick={() => setActiveTool('arrow')} title="Arrow/Leader (A)">
-                  <FaArrowUp size={14} />
-                </ToolButton>
-                <ToolButton $isActive={activeTool === 'text'} onClick={() => setActiveTool('text')} title="Text (T)">
-                  <FaFont size={14} />
-                </ToolButton>
-                <ToolButton $isActive={activeTool === 'comment'} onClick={() => setActiveTool('comment')} title="Comment (C)">
-                  <FaComment size={14} />
-                </ToolButton>
-                    </ToolGrid>
-                  </AccordionContent>
-                </AccordionSection>
-
-
-                {/* Measuring Accordion */}
-                <AccordionSection>
-                  <AccordionHeader onClick={() => toggleAccordion('measuring')}>
-                    <span>Measuring</span>
-                    <AccordionIcon className={accordionStates.measuring ? 'expanded' : ''}>
-                      <FaChevronRight size={12} />
-                    </AccordionIcon>
-                  </AccordionHeader>
-                  <AccordionContent $expanded={accordionStates.measuring}>
-                    
-                    <CompactToolGrid>
-                <ToolButton $isActive={activeTool === 'length'} onClick={() => setActiveTool('length')} title="Length/Caliper (D)">
-                  <FaRulerCombined size={14} />
-                </ToolButton>
-                <ToolButton $isActive={activeTool === 'polyline'} onClick={() => setActiveTool('polyline')} title="Polyline Length (Y)">
-                  <FaRoute size={14} />
-                </ToolButton>
-                      <ToolButton $isActive={activeTool === 'ellipseStats'} onClick={() => setActiveTool('ellipseStats')} title="Ellipse Statistics (S)">
-                        <FaCircle size={14} />
-                      </ToolButton>
-                    </CompactToolGrid>
-              
-              {/* Measurement Unit Controls */}
-                    <InputGroup>
-                      <LabeledInput>
-                        <FaRuler size={12} style={{ color: '#8aa' }} />
-                        <span>Units:</span>
-                        <StyledSelect
-                  value={measurementUnit}
-                  onChange={(e) => handleMeasurementUnitChange(e.target.value as 'pixels' | 'mm' | 'cm')}
-                >
-                  <option value="pixels">Pixels</option>
-                  <option value="mm">Millimeters</option>
-                  <option value="cm">Centimeters</option>
-                        </StyledSelect>
-                      </LabeledInput>
-                
-                {measurementUnit !== 'pixels' && (
-                        <div>
-                          <LabeledInput>
-                            <FaRuler size={12} style={{ color: '#8aa' }} />
-                            <span>Scale:</span>
-                            <StyledInput
-                      type="number"
-                      value={pixelToMmRatio}
-                      onChange={(e) => handlePixelRatioChange(parseFloat(e.target.value) || 0.5)}
-                      onBlur={(e) => {
-                    const value = parseFloat(e.target.value)
-                    if (isNaN(value) || value <= 0) {
-                      setPixelToMmRatio(0.5) // Reset to default if invalid
-                    } else {
-                      setPixelToMmRatio(Math.max(0.01, Math.min(1000, value))) // Clamp between 0.01 and 1000
-                    }
-                  }}
-                  min="0.01"
-                  max="1000"
-                  step="0.1"
-                  title="Scale ratio: pixels per millimeter (0.01-1000)"
-                              placeholder="0.5"
-                />
-                            <span style={{ fontSize: '12px', color: '#8aa', paddingLeft: '8px' }}>px/mm</span>
-                          </LabeledInput>
-                
-                          <PresetButtons>
-                  <button
-                    type="button"
-                    onClick={() => setPixelToMmRatio(0.5)}
-                    title="2 pixels per mm (high-res medical imaging)"
-                  >
-                    2px/mm
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPixelToMmRatio(1)}
-                    title="1 pixel per mm (standard medical imaging)"
-                  >
-                    1px/mm
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPixelToMmRatio(2)}
-                    title="0.5 pixels per mm (lower-res imaging)"
-                  >
-                    0.5px/mm
-                  </button>
-                          </PresetButtons>
-                </div>
-                      )}
-                    </InputGroup>
-                    
-                  </AccordionContent>
-                </AccordionSection>
-
-                {/* Review & Workflow Accordion */}
-                <AccordionSection>
-                  <AccordionHeader onClick={() => toggleAccordion('workflow')}>
-                    <span>Review & Workflow</span>
-                    <AccordionIcon className={accordionStates.workflow ? 'expanded' : ''}>
-                      <FaChevronRight size={12} />
-                    </AccordionIcon>
-                  </AccordionHeader>
-                  <AccordionContent $expanded={accordionStates.workflow}>
-                    
-                    <ToolGrid>
-                <ToolButton onClick={undo} title="Undo (⌘Z)" disabled={historyIndex <= 0}>
-                  <FaUndo size={14} />
-                </ToolButton>
-                <ToolButton onClick={redo} title="Redo (⌘⇧Z)" disabled={historyIndex >= history.length - 1}>
-                  <FaRedo size={14} />
-                </ToolButton>
-                <ToolButton 
-                  onClick={deleteSelectedAnnotation} 
-                  title="Delete Selected (Delete)" 
-                  disabled={!selectedAnnotation}
-                  style={{ 
-                    backgroundColor: selectedAnnotation ? '#ff4444' : 'transparent',
-                    color: selectedAnnotation ? 'white' : '#8aa'
-                  }}
-                >
-                  <FaTrash size={14} />
-                </ToolButton>
-                <ToolButton onClick={() => {
-                  const newBookmark = {
-                    id: Date.now(),
-                    timestamp: new Date().toISOString(),
-                    zoom,
-                    pan,
-                          objects: (drawingShapes || []).length,
-                          annotations: (textAnnotations || []).length
-                  }
-                  setBookmarks(prev => [...prev, newBookmark])
-                }} title="Bookmark/Key Image (K)">
-                  <FaBookmark size={14} />
-                </ToolButton>
-                <ToolButton 
-                  $isActive={studyState === 'accepted'} 
-                  onClick={() => setStudyState(studyState === 'accepted' ? 'pending' : 'accepted')} 
-                  title="Accept"
-                >
-                  <FaCheckCircle size={14} />
-                </ToolButton>
-                <ToolButton 
-                  $isActive={studyState === 'rejected'} 
-                  onClick={() => setStudyState(studyState === 'rejected' ? 'pending' : 'rejected')} 
-                  title="Reject"
-                >
-                  <FaTimesCircle size={14} />
-                </ToolButton>
-                <ToolButton onClick={exportAnnotations} title="Export">
-                  <FaFileExport size={14} />
-                </ToolButton>
-                    </ToolGrid>
-                    
-                  </AccordionContent>
-                </AccordionSection>
-              </div>
-            </>
-          )}
-        </CollapsibleToolsSidebar>
 
         {/* Main Viewer Area */}
         <MainViewerArea>
-          {/* Thumbnails at the top */}
+          {/* Thumbnail Bar */}
           <ThumbnailBar>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginRight: '16px' }}>
-              <SidebarTitle style={{ fontSize: '14px', margin: 0 }}>Images</SidebarTitle>
-              <CountBadge>{Array.isArray(files) ? files.length : 0}</CountBadge>
-            </div>
-            
-            {Array.isArray(files) && files.length > 0 ? (
-              files.map((file, index) => (
-                <ThumbnailItem 
-                  key={index} 
-                  $isSelected={index === selected}
-                  onClick={() => setSelected(index)}
+            {/* Navigation arrows */}
+            {files.length > 1 && (
+              <>
+                <button
+                  onClick={() => handleThumbnailClick(Math.max(0, selected - 1))}
+                  disabled={selected === 0 || isTransitioning}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    background: selected === 0 ? 'rgba(255,255,255,0.1)' : 'rgba(6, 148, 251, 0.2)',
+                    color: selected === 0 ? '#666' : '#0694fb',
+                    border: '1px solid rgba(6, 148, 251, 0.3)',
+                    cursor: selected === 0 ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 12,
+                    transition: 'all 0.2s ease',
+                    opacity: selected === 0 ? 0.5 : 1
+                  }}
+                  title="Previous image (←)"
                 >
-                  <ThumbnailImage src={file.url} alt={file.name} />
-                </ThumbnailItem>
-              ))
-            ) : (
-              <div style={{ 
+                  <FaChevronLeft size={10} />
+                </button>
+                
+                <button
+                  onClick={() => handleThumbnailClick(Math.min(files.length - 1, selected + 1))}
+                  disabled={selected === files.length - 1 || isTransitioning}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    background: selected === files.length - 1 ? 'rgba(255,255,255,0.1)' : 'rgba(6, 148, 251, 0.2)',
+                    color: selected === files.length - 1 ? '#666' : '#0694fb',
+                    border: '1px solid rgba(6, 148, 251, 0.3)',
+                    cursor: selected === files.length - 1 ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 12,
+                    transition: 'all 0.2s ease',
+                    opacity: selected === files.length - 1 ? 0.5 : 1
+                  }}
+                  title="Next image (→)"
+                >
+                  <FaChevronRight size={10} />
+                </button>
+              </>
+            )}
+            
+            {/* Image counter */}
+            {files.length > 1 && (
+              <div style={{
+                fontSize: 12,
                 color: '#8aa',
-                fontSize: '12px',
-                padding: '20px'
+                margin: '0 8px',
+                minWidth: '40px',
+                textAlign: 'center',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}>
-                No images available
+                {selected + 1} / {files.length}
               </div>
             )}
             
-            <AddImageButton>
-              <FaPlusCircle size={16} />
-              <div style={{ fontSize: '10px', marginTop: '4px' }}>Add</div>
-            </AddImageButton>
+            {files.length > 0 ? (
+              files.map((file, index) => (
+                <ThumbnailContainer 
+                  key={index} 
+                  $isSelected={selected === index}
+                  $isLoading={isLoadingImage && selected === index}
+                  onClick={() => handleThumbnailClick(index)}
+                >
+                  <SmartThumbnail
+                    url={file.url}
+                    alt={`Scan ${index + 1}`}
+                    size={50}
+                  />
+                  {/* Delete button - only show if there's more than one image */}
+                  {files.length > 1 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent thumbnail selection
+                        handleDeleteImage(index);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: -6,
+                        right: -6,
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        background: '#f44336',
+                        color: 'white',
+                        border: 'none',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 10,
+                        zIndex: 10,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.1)'
+                        e.currentTarget.style.background = '#d32f2f'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)'
+                        e.currentTarget.style.background = '#f44336'
+                      }}
+                      title="Delete this image"
+                    >
+                      <FaTrashAlt size={8} />
+                    </button>
+                  )}
+                </ThumbnailContainer>
+              ))
+            ) : (
+              <div style={{ 
+                width: '50px',
+                height: '50px',
+                background: '#2a2a2a',
+                border: '2px dashed #666',
+                                          borderRadius: '6px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                color: '#666',
+                                      fontSize: '10px',
+                textAlign: 'center'
+              }}>
+                No Images
+              </div>
+            )}
+            
+            {/* Add Image Button */}
+            <button
+              onClick={handleAddImageClick}
+              disabled={uploading}
+                                    style={{
+                width: '50px',
+                height: '50px',
+                background: uploading ? '#666' : 'transparent',
+                border: '2px dashed #0694fb',
+                                            borderRadius: '6px',
+                cursor: uploading ? 'not-allowed' : 'pointer',
+                                      display: 'flex',
+                flexDirection: 'column',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                color: '#0694fb',
+                                      fontSize: '10px',
+                opacity: uploading ? 0.6 : 1
+              }}
+            >
+              {uploading ? (
+                <>
+                  <FaSpinner size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                  <div style={{ fontSize: '8px', marginTop: '2px' }}>Uploading...</div>
+                </>
+              ) : (
+                <>
+                  <FaPlusCircle size={16} />
+                  <div style={{ fontSize: '8px', marginTop: '2px' }}>Add</div>
+                </>
+              )}
+            </button>
+            
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/gif,.dcm,application/dicom"
+              onChange={handleImageUpload}
+              style={{ display: 'none' }}
+            />
           </ThumbnailBar>
 
           {/* Viewer Area */}
           <ViewerArea>
-            {/* Image Viewer */}
-            <ImageViewerArea>
-              <div
-                ref={setViewerContainer}
-                style={{
-                  position: 'relative',
+            <ImageViewerArea data-image-viewer style={{ position: 'relative' }}>
+              {/* Loading overlay for image viewer */}
+              {isLoadingImage && (
+                <LoadingOverlay>
+                  <LoadingSpinner />
+                  <LoadingText>
+                    Loading image...
+                  </LoadingText>
+                  <LoadingProgress />
+                </LoadingOverlay>
+              )}
+              
+              {files.length > 0 ? (
+                (() => {
+                  // Determine output image URL when analysis result is ready
+                  // Only show output image if currentAnalysis belongs to the currently selected image
+                  const outputImageUrl = (() => {
+                    if (!currentAnalysis) {
+                      console.log('🖼️ No current analysis - showing single viewer')
+                      return ''
+                    }
+                    
+                    // Check if the current analysis belongs to the currently selected image
+                    if (currentAnalysis.imageIndex !== selected) {
+                      console.log(`🖼️ Analysis belongs to image ${currentAnalysis.imageIndex}, but selected is ${selected} - showing single viewer`)
+                      return ''
+                    }
+                    
+                    console.log(`🖼️ Analysis belongs to selected image ${selected} - showing side-by-side viewer`)
+                    
+                    let outputUrl = ''
+                    if (meta?.analysisType === 'ct_to_mri') {
+                      outputUrl = (currentAnalysis as any)?.ct_to_mri || (currentAnalysis as any)?.rawData?.ct_to_mri || ''
+                    } else if (meta?.analysisType === 'mri_to_ct') {
+                      outputUrl = (currentAnalysis as any)?.converted_image || (currentAnalysis as any)?.rawData?.converted_image || ''
+                    } else {
+                      outputUrl = (currentAnalysis as any)?.combined_image || (currentAnalysis as any)?.rawData?.combined_image || ''
+                    }
+                    
+                    console.log(`🖼️ Output image URL:`, {
+                      analysisType: meta?.analysisType,
+                      hasCombinedImage: !!(currentAnalysis as any)?.combined_image,
+                      hasRawDataCombinedImage: !!(currentAnalysis as any)?.rawData?.combined_image,
+                      outputUrl: outputUrl ? `${outputUrl.substring(0, 50)}...` : 'empty',
+                      outputUrlLength: outputUrl?.length || 0
+                    })
+                    
+                    return outputUrl
+                  })()
+
+                  const showSideBySide = Boolean(outputImageUrl)
+
+                  if (!showSideBySide) {
+                    // Single viewer with smooth transitions
+                    return (
+                      <ImageContainer>
+                        {files.map((file, index) => (
+                          <ImageSlide
+                            key={index}
+                            $isActive={selected === index}
+                            $direction={index > previousSelected ? 'right' : 'left'}
+                          >
+                            <ImageViewer
+                              imageUrl={file.url || '/placeholder-image.jpg'}
+                              alt={`Medical Scan ${index + 1}`}
+                              showControls={false}
+                              disableInteractions={true}
+                            />
+                          </ImageSlide>
+                        ))}
+                      </ImageContainer>
+                    )
+                  }
+
+                  // Side-by-side comparison: Original (left) and Output (right)
+                  return (
+                    <div style={{ display: 'flex', gap: 0, width: '100%', height: '100%' }}>
+                      {/* Left: Original */}
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <div style={{ fontSize: 12, color: '#8aa', margin: '0 0 6px 0', height: 18, display: 'flex', alignItems: 'center' }}>Original</div>
+                        <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#000', borderRadius: 8 }}>
+                          <ImageContainer>
+                            {files.map((file, index) => (
+                              <ImageSlide
+                                key={index}
+                                $isActive={selected === index}
+                                $direction={index > previousSelected ? 'right' : 'left'}
+                              >
+                                <img
+                                  src={file.url || '/placeholder-image.jpg'}
+                                  alt={`Original Medical Scan ${index + 1}`}
+                                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                                />
+                              </ImageSlide>
+                            ))}
+                          </ImageContainer>
+                        </div>
+                      </div>
+                      {/* Divider */}
+                      <div style={{ width: 1, background: '#2a2a2a', height: '100%', margin: '0 12px' }} />
+                      {/* Right: Output */}
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                        <div style={{ fontSize: 12, color: '#8aa', margin: '0 0 6px 0', height: 18, display: 'flex', alignItems: 'center' }}>Output</div>
+                        <div style={{ flex: 1, minHeight: 0, position: 'relative', background: '#000', borderRadius: 8 }}>
+                          <img
+                            src={outputImageUrl}
+                            alt="AI Output Image"
+                            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()
+              ) : (
+              <div style={{
                   width: '100%',
                   height: '100%',
-                  overflow: 'hidden',
-                  cursor: activeTool === 'select' ? 'grab' : 
-                          activeTool === 'brush' ? 'crosshair' :
-                          activeTool === 'marker' ? 'crosshair' :
-                          activeTool === 'text' ? 'text' :
-                          'crosshair'
-                }}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onWheel={handleWheel}
-                onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-              >
-            {Array.isArray(files) && files.length > 0 ? (
-            (() => {
-              const currentFile = files[selected]
-              return (
-                      <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-                        <div style={{ 
-                          pointerEvents: activeTool === 'select' ? 'none' : 'auto',
-                          width: '100%', 
-                          height: '100%',
-                          position: 'absolute',
-                          top: 0,
-                          left: 0
-                        }}>
-            <ImageViewer 
-                    imageUrl={currentFile?.url} 
-                            showControls={activeTool === 'select'} 
-                    inlineDicomViewer={isDicomFile(currentFile?.url, currentFile?.name)}
-                    alt={currentFile?.name || 'Medical scan'}
-                    externalTransform={{ scale: zoom, translateX: pan.x, translateY: pan.y }}
-                    disableInteractions={activeTool !== 'select'}
-                    onTransformChange={(transform) => {
-                      setZoom(transform.scale);
-                      setPan({ x: transform.translateX, y: transform.translateY });
-                    }}
-                  />
-              </div>
-                        
-                        {/* Annotations Overlay - transformed with image */}
-                        {overlayVisible && (
-                          <div
-                            style={{
-                      position: 'absolute',
-                              top: 0,
-                              left: 0,
-                              width: '100%',
-                              height: '100%',
-                              pointerEvents: activeTool === 'select' ? 'none' : 'auto',
-                              zIndex: 10,
-                              opacity: overlayOpacity / 100
-                            }}
-                          >
-                            {/* Render existing shapes */}
-                            {(drawingShapes || []).map(shape => {
-                              const isSelected = selectedAnnotation === shape.id && selectedAnnotationType === 'shape'
-                              
-                              if (shape.type === 'marker') {
-                                const markerScreen = imageToScreenCoords(shape.x, shape.y)
-                                return (
-                                  <div
-                                    key={shape.id}
-                                    onClick={(e) => handleAnnotationClick(e, shape.id, 'shape')}
-                                    onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                    style={{
-                                      position: 'absolute',
-                                      left: markerScreen.x,
-                                      top: markerScreen.y,
-                                      width: '12px',
-                                      height: '12px',
-                                      background: shape.color,
-                                      borderRadius: '50%',
-                                      border: isSelected ? '3px solid #0694fb' : '2px solid white',
-                                      transform: 'translate(-50%, -50%)',
-                                      pointerEvents: 'auto',
-                                      cursor: 'pointer',
-                                      boxShadow: isSelected ? '0 0 8px rgba(6, 148, 251, 0.6)' : 'none',
-                                      transition: 'all 0.2s ease'
-                                    }}
-                                  />
-                                )
-                              }
-                              if (shape.type === 'rectangle') {
-                                // Use stored coordinates if available, otherwise fall back to start/end calculation
-                                const coords = shape.coordinates || {
-                                  topLeft: { x: Math.min(shape.start.x, shape.end.x), y: Math.min(shape.start.y, shape.end.y) },
-                                  bottomRight: { x: Math.max(shape.start.x, shape.end.x), y: Math.max(shape.start.y, shape.end.y) }
-                                }
-                                const rect = projectRect(coords.topLeft, coords.bottomRight)
-                                
-                                return (
-                                  <div key={shape.id}>
-                                    <div
-                                      onClick={(e) => handleAnnotationClick(e, shape.id, 'shape')}
-                                      onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                      style={{
-                                        position: 'absolute',
-                                        left: rect.left,
-                                        top: rect.top,
-                                        width: rect.width,
-                                        height: rect.height,
-                                        border: isSelected ? '3px solid #0694fb' : `2px solid ${shape.color}`,
-                                        background: `${shape.color}20`,
-                                        pointerEvents: 'auto',
-                                        cursor: 'pointer',
-                                        boxShadow: isSelected ? '0 0 8px rgba(6, 148, 251, 0.6)' : 'none'
-                                      }}
-                                    />
-                                    {shape.label && (() => {
-                                      const labelPos = getLabelPosition(shape)
-                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
-                                      return (
-                                      <div
-                                        style={{
-                                          position: 'absolute',
-                                            left: labelScreen.x,
-                                            top: labelScreen.y,
-                                          background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
-                                          color: 'white',
-                                          padding: '4px 8px',
-                                          borderRadius: '6px',
-                                          fontSize: '12px',
-                                          fontWeight: 'bold',
-                                          pointerEvents: 'none',
-                                          zIndex: 20,
-                                          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-                                          border: '1px solid rgba(255, 255, 255, 0.1)',
-                                          backdropFilter: 'blur(4px)',
-                                          letterSpacing: '0.5px'
-                                        }}
-                                      >
-                                        {shape.label.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
-              </div>
-                                      )
-                                    })()}
-                                  </div>
-                                )
-                              }
-                              if (shape.type === 'ellipse') {
-                                // Use stored coordinates if available, otherwise fall back to start/end calculation
-                                const coords = shape.coordinates || {
-                                  topLeft: { x: Math.min(shape.start.x, shape.end.x), y: Math.min(shape.start.y, shape.end.y) },
-                                  bottomRight: { x: Math.max(shape.start.x, shape.end.x), y: Math.max(shape.start.y, shape.end.y) }
-                                }
-                                const rect = projectRect(coords.topLeft, coords.bottomRight)
-                                
-                                return (
-                                  <div key={shape.id}>
-                                    <div
-                                      onClick={(e) => handleAnnotationClick(e, shape.id, 'shape')}
-                                      onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                      style={{
-                                        position: 'absolute',
-                                        left: rect.left,
-                                        top: rect.top,
-                                        width: rect.width,
-                                        height: rect.height,
-                                        border: isSelected ? '3px solid #0694fb' : `2px solid ${shape.color}`,
-                                        background: `${shape.color}20`,
-                                        borderRadius: '50%',
-                                        pointerEvents: 'auto',
-                                        cursor: 'pointer',
-                                        boxShadow: isSelected ? '0 0 8px rgba(6, 148, 251, 0.6)' : 'none'
-                                      }}
-                                    />
-                                    {shape.label && (() => {
-                                      const labelPos = getLabelPosition(shape)
-                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
-                                      return (
-                                        <div
-                                          style={{
-                                            position: 'absolute',
-                                            left: labelScreen.x,
-                                            top: labelScreen.y,
-                                            background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
-                                            color: 'white',
-                                            padding: '4px 8px',
-                                            borderRadius: '6px',
-                                            fontSize: '11px',
-                                            fontWeight: '600',
-                                            pointerEvents: 'none',
-                                            zIndex: 20,
-                                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)',
-                                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                                            backdropFilter: 'blur(4px)',
-                                          letterSpacing: '0.5px'
-                                          }}
-                                        >
-                                          {shape.label.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
-                                        </div>
-                                      )
-                                    })()}
-                                  </div>
-                                )
-                              }
-                              if (shape.type === 'length') {
-                                return (
-                                  <div key={shape.id}>
-                                    <div
-                                      onClick={(e) => handleAnnotationClick(e, shape.id, 'shape')}
-                                      onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                      style={{
-                                        position: 'absolute',
-                                        left: Math.min(shape.start.x, shape.end.x),
-                                        top: Math.min(shape.start.y, shape.end.y),
-                                        width: Math.abs(shape.end.x - shape.start.x),
-                                        height: Math.abs(shape.end.y - shape.start.y),
-                                        border: isSelected ? '3px dashed #0694fb' : `2px dashed ${shape.color}`,
-                                        pointerEvents: 'auto',
-                                        cursor: 'pointer',
-                                        boxShadow: isSelected ? '0 0 8px rgba(6, 148, 251, 0.6)' : 'none'
-                                      }}
-                                    />
-                                    {shape.label && (() => {
-                                      const labelPos = getLabelPosition(shape)
-                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
-                                      return (
-                                        <div
-                                          style={{
-                                            position: 'absolute',
-                                            left: labelScreen.x,
-                                            top: labelScreen.y,
-                                            background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
-                                            color: 'white',
-                                            padding: '4px 8px',
-                                            borderRadius: '6px',
-                                            fontSize: '11px',
-                                            fontWeight: '600',
-                                            pointerEvents: 'none',
-                                            zIndex: 20,
-                                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)',
-                                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                                            backdropFilter: 'blur(4px)',
-                                          letterSpacing: '0.5px'
-                                          }}
-                                        >
-                                          {shape.label.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
-                                        </div>
-                                      )
-                                    })()}
-                                  </div>
-                                )
-                              }
-                              if (shape.type === 'arrow') {
-                                return (
-                                  <div key={shape.id}>
-                                    <svg
-                                      onClick={(e) => handleAnnotationClick(e, shape.id, 'shape')}
-                                      onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                      style={{
-                                        position: 'absolute',
-                                        top: 0,
-                                        left: 0,
-                                        width: '100%',
-                                        height: '100%',
-                                        pointerEvents: 'auto',
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      <defs>
-                                        <marker
-                                          id={`arrowhead-${shape.id}`}
-                                          markerWidth="10"
-                                          markerHeight="7"
-                                          refX="9"
-                                          refY="3.5"
-                                          orient="auto"
-                                        >
-                                          <polygon
-                                            points="0 0, 10 3.5, 0 7"
-                                            fill={shape.color}
-                                          />
-                                        </marker>
-                                      </defs>
-                                      <line
-                                        x1={imageToScreenCoords(shape.start.x, shape.start.y).x}
-                                        y1={imageToScreenCoords(shape.start.x, shape.start.y).y}
-                                        x2={imageToScreenCoords(shape.end.x, shape.end.y).x}
-                                        y2={imageToScreenCoords(shape.end.x, shape.end.y).y}
-                                      stroke={isSelected ? '#0694fb' : shape.color}
-                                      strokeWidth={isSelected ? "3" : "2"}
-                                      markerEnd={`url(#arrowhead-${shape.id})`}
-                                      style={{
-                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                      />
-                                    </svg>
-                                    {shape.label && (() => {
-                                      const labelPos = getLabelPosition(shape)
-                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
-                                      return (
-                                        <div
-                                          style={{
-                                            position: 'absolute',
-                                            left: labelScreen.x,
-                                            top: labelScreen.y,
-                                            background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
-                                            color: 'white',
-                                            padding: '4px 8px',
-                                            borderRadius: '6px',
-                                            fontSize: '11px',
-                                            fontWeight: '600',
-                                            pointerEvents: 'none',
-                                            zIndex: 20,
-                                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)',
-                                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                                            backdropFilter: 'blur(4px)',
-                                          letterSpacing: '0.5px'
-                                          }}
-                                        >
-                                          {shape.label.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
-                                        </div>
-                                      )
-                                    })()}
-                                  </div>
-                                )
-                              }
-                              if (shape.type === 'polygon') {
-                                return (
-                                  <div key={shape.id}>
-                                    <svg
-                                      onClick={(e) => handleAnnotationClick(e, shape.id, 'shape')}
-                                      onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                      style={{
-                                        position: 'absolute',
-                                        top: 0,
-                                        left: 0,
-                                        width: '100%',
-                                        height: '100%',
-                                        pointerEvents: 'auto',
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      <polygon
-                                        points={shape.points.map((p: any) => {
-                                          const s = imageToScreenCoords(p.x, p.y)
-                                          return `${s.x},${s.y}`
-                                        }).join(' ')}
-                                        fill={`${shape.color}20`}
-                                      stroke={isSelected ? '#0694fb' : shape.color}
-                                      strokeWidth={isSelected ? "3" : "2"}
-                                      style={{
-                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                      />
-                                    </svg>
-                                    {shape.label && (() => {
-                                      const labelPos = getLabelPosition(shape)
-                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
-                                      return (
-                                        <div
-                                          style={{
-                                            position: 'absolute',
-                                            left: labelScreen.x,
-                                            top: labelScreen.y,
-                                            background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
-                                            color: 'white',
-                                            padding: '4px 8px',
-                                            borderRadius: '6px',
-                                            fontSize: '11px',
-                                            fontWeight: '600',
-                                            pointerEvents: 'none',
-                                            zIndex: 20,
-                                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)',
-                                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                                            backdropFilter: 'blur(4px)',
-                                          letterSpacing: '0.5px'
-                                          }}
-                                        >
-                                          {shape.label.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
-                                        </div>
-                                      )
-                                    })()}
-                                  </div>
-                                )
-                              }
-                              if (shape.type === 'lasso') {
-                                return (
-                                  <div key={shape.id}>
-                                    <svg
-                                      onClick={(e) => handleAnnotationClick(e, shape.id, 'shape')}
-                                      onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                      style={{
-                                        position: 'absolute',
-                                        top: 0,
-                                        left: 0,
-                                        width: '100%',
-                                        height: '100%',
-                                        pointerEvents: 'auto',
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      <path
-                                        d={(() => {
-                                          const s0 = imageToScreenCoords(shape.points[0].x, shape.points[0].y)
-                                          const rest = shape.points.map((p: any) => {
-                                            const s = imageToScreenCoords(p.x, p.y)
-                                            return `L ${s.x} ${s.y}`
-                                          }).join(' ')
-                                          return `M ${s0.x} ${s0.y} ${rest}`
-                                        })()}
-                                        fill="none"
-                                      stroke={isSelected ? '#0694fb' : shape.color}
-                                      strokeWidth={isSelected ? "3" : "2"}
-                                      style={{
-                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                      />
-                                    </svg>
-                                    {shape.label && (() => {
-                                      const labelPos = getLabelPosition(shape)
-                                      const labelScreen = imageToScreenCoords(labelPos.x, labelPos.y)
-                                      return (
-                                        <div
-                                          style={{
-                                            position: 'absolute',
-                                            left: labelScreen.x,
-                                            top: labelScreen.y,
-                                            background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
-                                            color: 'white',
-                                            padding: '4px 8px',
-                                            borderRadius: '6px',
-                                            fontSize: '11px',
-                                            fontWeight: '600',
-                                            pointerEvents: 'none',
-                                            zIndex: 20,
-                                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2)',
-                                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                                            backdropFilter: 'blur(4px)',
-                                          letterSpacing: '0.5px'
-                                          }}
-                                        >
-                                          {shape.label.split(' ').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
-                                        </div>
-                                      )
-                                    })()}
-                                  </div>
-                                )
-                              }
-                              if (shape.type === 'threshold') {
-                                return (
-                                  <div
-                                    key={shape.id}
-                                    style={{
-                                      position: 'absolute',
-                                      left: shape.x,
-                                      top: shape.y,
-                                      width: '16px',
-                                      height: '16px',
-                                      background: shape.color,
-                                      borderRadius: '50%',
-                                      border: '2px solid white',
-                                      transform: 'translate(-50%, -50%)',
-                                      pointerEvents: 'auto',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      fontSize: '10px',
-                                      fontWeight: 'bold',
-                                      color: 'white'
-                                    }}
-                                    title={`Threshold: ${shape.value}`}
-                                  >
-                                    T
-              </div>
-                                )
-                              }
-                              if (shape.type === 'regionGrow') {
-                                return (
-                                  <div
-                                    key={shape.id}
-                                    style={{
-                                      position: 'absolute',
-                                      left: shape.x,
-                                      top: shape.y,
-                                      width: '16px',
-                                      height: '16px',
-                                      background: shape.color,
-                                      borderRadius: '50%',
-                                      border: '2px solid white',
-                                      transform: 'translate(-50%, -50%)',
-                                      pointerEvents: 'auto',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      fontSize: '10px',
-                                      fontWeight: 'bold',
-                                      color: 'white'
-                                    }}
-                                    title={`Region Grow (Tolerance: ${shape.tolerance})`}
-                                  >
-                                    R
-                                  </div>
-                                )
-                              }
-                              if (shape.type === 'fill') {
-                                return (
-                                  <div
-                                    key={shape.id}
-                                    style={{
-                                      position: 'absolute',
-                                      left: shape.x,
-                                      top: shape.y,
-                                      width: '16px',
-                                      height: '16px',
-                                      background: shape.color,
-                                      borderRadius: '50%',
-                                      border: '2px solid white',
-                                      transform: 'translate(-50%, -50%)',
-                                      pointerEvents: 'auto',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      fontSize: '10px',
-                                      fontWeight: 'bold',
-                                      color: 'white'
-                                    }}
-                                    title="Fill Tool"
-                                  >
-                                    F
-                                  </div>
-                                )
-                              }
-                              if (shape.type === 'smooth') {
-                                return (
-                                  <div
-                                    key={shape.id}
-                                    style={{
-                                      position: 'absolute',
-                                      left: shape.x,
-                                      top: shape.y,
-                                      width: '16px',
-                                      height: '16px',
-                                      background: shape.color,
-                                      borderRadius: '50%',
-                                      border: '2px solid white',
-                                      transform: 'translate(-50%, -50%)',
-                                      pointerEvents: 'auto',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      fontSize: '10px',
-                                      fontWeight: 'bold',
-                                      color: 'white'
-                                    }}
-                                    title="Smooth Tool"
-                                  >
-                                    S
-                                  </div>
-                                )
-                              }
-                              if (shape.type === 'interpolate') {
-                                return (
-                                  <div
-                                    key={shape.id}
-                                    style={{
-                                      position: 'absolute',
-                                      left: shape.x,
-                                      top: shape.y,
-                                      width: '16px',
-                                      height: '16px',
-                                      background: shape.color,
-                                      borderRadius: '50%',
-                                      border: '2px solid white',
-                                      transform: 'translate(-50%, -50%)',
-                                      pointerEvents: 'auto',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      fontSize: '10px',
-                                      fontWeight: 'bold',
-                                      color: 'white'
-                                    }}
-                                    title="Interpolate Tool"
-                                  >
-                                    I
-                                  </div>
-                                )
-                              }
-                              if (shape.type === 'probe') {
-                                return (
-                                  <div
-                                    key={shape.id}
-                                    style={{
-                                      position: 'absolute',
-                                      left: shape.x,
-                                      top: shape.y,
-                                      width: '16px',
-                                      height: '16px',
-                                      background: shape.color,
-                                      borderRadius: '50%',
-                                      border: '2px solid white',
-                                      transform: 'translate(-50%, -50%)',
-                                      pointerEvents: 'auto',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      fontSize: '10px',
-                                      fontWeight: 'bold',
-                                      color: 'white'
-                                    }}
-                                    title="Probe Tool - Click to get pixel value"
-                                  >
-                                    P
-                                  </div>
-                                )
-                              }
-                              if (shape.type === 'volume') {
-                                return (
-                                  <div
-                                    key={shape.id}
-                                    style={{
-                                      position: 'absolute',
-                                      left: shape.x,
-                                      top: shape.y,
-                                      width: '16px',
-                                      height: '16px',
-                                      background: shape.color,
-                                      borderRadius: '50%',
-                                      border: '2px solid white',
-                                      transform: 'translate(-50%, -50%)',
-                                      pointerEvents: 'auto',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      fontSize: '10px',
-                                      fontWeight: 'bold',
-                                      color: 'white'
-                                    }}
-                                    title="Volume Tool - Click to calculate volume"
-                                  >
-                                    V
-                                  </div>
-                                )
-                              }
-                              return null
-                            })}
-
-                            {/* Render existing measurements */}
-                            {console.log('measurementLines array:', measurementLines)}
-                            {(measurementLines || []).map(measurement => {
-                              console.log('Rendering measurement type:', measurement.type, 'object:', measurement)
-                              if (measurement.type === 'length') {
-                                const midX = (measurement.start.x + measurement.end.x) / 2
-                                const midY = (measurement.start.y + measurement.end.y) / 2
-                                const startScreen = imageToScreenCoords(measurement.start.x, measurement.start.y)
-                                const endScreen = imageToScreenCoords(measurement.end.x, measurement.end.y)
-                                const midScreen = imageToScreenCoords(midX, midY)
-                                
-                                const isSelected = selectedAnnotation === measurement.id && selectedAnnotationType === 'measurement'
-                                
-                                return (
-                                  <svg
-                                    key={measurement.id}
-                                    onClick={(e) => handleAnnotationClick(e, measurement.id, 'measurement')}
-                                    style={{
-                                      position: 'absolute',
-                                      top: 0,
-                                      left: 0,
-                                      width: '100%',
-                                      height: '100%',
-                                      pointerEvents: 'auto',
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    {/* Measurement line */}
-                                    <line
-                                      x1={startScreen.x}
-                                      y1={startScreen.y}
-                                      x2={endScreen.x}
-                                      y2={endScreen.y}
-                                      stroke={isSelected ? '#0694fb' : measurement.color}
-                                      strokeWidth={isSelected ? "3" : "2"}
-                                      style={{
-                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                    />
-                                    
-                                    {/* Start point */}
-                                    <circle
-                                      cx={startScreen.x}
-                                      cy={startScreen.y}
-                                      r="4"
-                                      fill={isSelected ? '#0694fb' : measurement.color}
-                                      style={{
-                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                    />
-                                    
-                                    {/* End point */}
-                                    <circle
-                                      cx={endScreen.x}
-                                      cy={endScreen.y}
-                                      r="4"
-                                      fill={isSelected ? '#0694fb' : measurement.color}
-                                      style={{
-                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                    />
-                                    
-                                    {/* Distance label */}
-                                    <text
-                                      x={midScreen.x}
-                                      y={midScreen.y - 10}
-                                      textAnchor="middle"
-                                      fill={isSelected ? '#0694fb' : measurement.color}
-                                      fontSize="12"
-                                      fontWeight="bold"
-                                      style={{
-                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
-                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                    >
-                                      {measurement.formattedDistance}
-                                    </text>
-                                  </svg>
-                                )
-                              }
-                              
-                              
-                              if (measurement.type === 'polyline') {
-                                const midPointIndex = Math.floor(measurement.points.length / 2)
-                                const midPoint = measurement.points[midPointIndex]
-                                const midPointScreen = imageToScreenCoords(midPoint.x, midPoint.y)
-                                
-                                const isSelected = selectedAnnotation === measurement.id && selectedAnnotationType === 'measurement'
-                                
-              return (
-                                  <svg
-                                    key={measurement.id}
-                                    onClick={(e) => handleAnnotationClick(e, measurement.id, 'measurement')}
-                                    style={{
-                                      position: 'absolute',
-                                      top: 0,
-                                      left: 0,
-                                      width: '100%',
-                                      height: '100%',
-                                      pointerEvents: 'auto',
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    <path
-                                      d={`M ${imageToScreenCoords(measurement.points[0].x, measurement.points[0].y).x} ${imageToScreenCoords(measurement.points[0].x, measurement.points[0].y).y} ${measurement.points.map((p: any) => {
-                                        const screenP = imageToScreenCoords(p.x, p.y)
-                                        return `L ${screenP.x} ${screenP.y}`
-                                      }).join(' ')}`}
-                                      fill="none"
-                                      stroke={isSelected ? '#0694fb' : measurement.color}
-                                      strokeWidth={isSelected ? "3" : "2"}
-                                      style={{
-                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                    />
-                                    {measurement.points.map((point: any, index: number) => {
-                                      const screenP = imageToScreenCoords(point.x, point.y)
-                                      return (
-                                      <circle
-                                        key={index}
-                                          cx={screenP.x}
-                                          cy={screenP.y}
-                                        r="3"
-                                        fill={isSelected ? '#0694fb' : measurement.color}
-                                        style={{
-                                          filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
-                                          transition: 'all 0.2s ease'
-                                        }}
-                                      />
-                                      )
-                                    })}
-                                    {/* Total length label */}
-                                    <text
-                                      x={midPointScreen.x}
-                                      y={midPointScreen.y - 10}
-                                      textAnchor="middle"
-                                      fill={isSelected ? '#0694fb' : measurement.color}
-                                      fontSize="12"
-                                      fontWeight="bold"
-                                      style={{
-                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
-                                        filter: isSelected ? 'drop-shadow(0 0 8px rgba(6, 148, 251, 0.6))' : 'none',
-                                        transition: 'all 0.2s ease'
-                                      }}
-                                    >
-                                      {measurement.formattedLength}
-                                    </text>
-                                  </svg>
-                                )
-                              }
-                              
-                              if (measurement.type === 'ellipseStats') {
-                                console.log('Rendering ellipse stats measurement:', measurement)
-                                const centerScreen = imageToScreenCoords(measurement.center.x, measurement.center.y)
-                                const radiusXScreen = measurement.radiusX * zoom
-                                const radiusYScreen = measurement.radiusY * zoom
-                                
-                                const isSelected = selectedAnnotation === measurement.id && selectedAnnotationType === 'measurement'
-                                
-                                return (
-                                  <svg
-                                    key={measurement.id}
-                                    onClick={(e) => handleAnnotationClick(e, measurement.id, 'measurement')}
-                                    style={{
-                      position: 'absolute',
-                                      top: 0,
-                                      left: 0,
-                                      width: '100%',
-                                      height: '100%',
-                                      pointerEvents: 'auto',
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    {/* Ellipse outline */}
-                                    <ellipse
-                                      cx={centerScreen.x}
-                                      cy={centerScreen.y}
-                                      rx={radiusXScreen}
-                                      ry={radiusYScreen}
-                                      fill="none"
-                                      stroke={isSelected ? '#0694fb' : measurement.color}
-                                      strokeWidth={isSelected ? "3" : "2"}
-                                      strokeDasharray="5,5"
-                                    />
-                                    
-                                    {/* Center point */}
-                                    <circle
-                                      cx={centerScreen.x}
-                                      cy={centerScreen.y}
-                                      r="3"
-                                      fill={isSelected ? '#0694fb' : measurement.color}
-                                    />
-                                    
-                                    {/* Area label */}
-                                    <text
-                                      x={centerScreen.x}
-                                      y={centerScreen.y - radiusYScreen - 20}
-                                      textAnchor="middle"
-                                      fill={measurement.color}
-                                      fontSize="11"
-                                      fontWeight="bold"
-                                      style={{
-                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)'
-                                      }}
-                                    >
-                                      Area: {measurement.area}
-                                    </text>
-                                    
-                                    {/* Circumference label */}
-                                    <text
-                                      x={centerScreen.x}
-                                      y={centerScreen.y - radiusYScreen - 5}
-                                      textAnchor="middle"
-                                      fill={measurement.color}
-                                      fontSize="11"
-                                      fontWeight="bold"
-                                      style={{
-                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)'
-                                      }}
-                                    >
-                                      Circ: {measurement.circumference}
-                                    </text>
-                                    
-                                    {/* Major/Minor axes label */}
-                                    <text
-                                      x={centerScreen.x}
-                                      y={centerScreen.y + radiusYScreen + 15}
-                                      textAnchor="middle"
-                                      fill={measurement.color}
-                                      fontSize="11"
-                                      fontWeight="bold"
-                                      style={{
-                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)'
-                                      }}
-                                    >
-                                      {measurement.majorAxis} × {measurement.minorAxis}
-                                    </text>
-                                    
-                                    {/* Eccentricity label */}
-                                    <text
-                                      x={centerScreen.x}
-                                      y={centerScreen.y + radiusYScreen + 30}
-                                      textAnchor="middle"
-                                      fill={measurement.color}
-                                      fontSize="11"
-                                      fontWeight="bold"
-                                      style={{
-                                        textShadow: '1px 1px 2px rgba(0,0,0,0.8)'
-                                      }}
-                                    >
-                                      e: {measurement.eccentricity}
-                                    </text>
-                                  </svg>
-                                )
-                              }
-                              return null
-                            })}
-
-                            {/* Render text annotations */}
-                            {(textAnnotations || []).filter(a => !a.hidden).map(annotation => {
-                              const isSelected = selectedAnnotation === annotation.id && selectedAnnotationType === 'text'
-                              const screenPos = imageToScreenCoords(annotation.x, annotation.y)
-                              
-              return (
-                                <div
-                                  key={annotation.id}
-                                  onClick={(e) => handleAnnotationClick(e, annotation.id, 'text')}
-                                  onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                  style={{
-                      position: 'absolute',
-                                    left: screenPos.x,
-                                    top: screenPos.y,
-                                    color: annotation.type === 'comment' ? '#000000' : annotation.color,
-                                    background: annotation.type === 'comment' ? 'rgba(255,255,0,0.9)' : 'rgba(0,0,0,0.7)',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                                    fontWeight: '600',
-                                    pointerEvents: 'auto',
-                                    cursor: 'pointer',
-                                    transform: 'translate(-50%, -50%)',
-                                    border: isSelected ? '2px solid #0694fb' : (annotation.type === 'comment' ? '1px solid #ffff00' : 'none'),
-                                    maxWidth: '200px',
-                                    wordWrap: 'break-word',
-                                    boxShadow: isSelected ? '0 0 8px rgba(6, 148, 251, 0.6)' : 'none'
-                                  }}
-                                  title={annotation.timestamp ? `Added: ${new Date(annotation.timestamp).toLocaleString()}` : ''}
-                                >
-                                  {annotation.type === 'comment' && '💬 '}
-                                  {annotation.text}
-                                </div>
-                              )
-                            })}
-
-                            {/* Render current shape being drawn */}
-                            {toolState.currentShape && (
-                              <>
-                                {toolState.currentShape.type === 'rectangle' && (
-                                  <div
-                                    style={{
-                                      position: 'absolute',
-                                      left: (() => {
-                                        const minX = Math.min(toolState.currentShape.start.x, toolState.currentShape.end.x)
-                                        return imageToScreenCoords(minX, 0).x
-                                      })(),
-                                      top: (() => {
-                                        const minY = Math.min(toolState.currentShape.start.y, toolState.currentShape.end.y)
-                                        return imageToScreenCoords(0, minY).y
-                                      })(),
-                                      width: Math.abs(toolState.currentShape.end.x - toolState.currentShape.start.x) * zoom,
-                                      height: Math.abs(toolState.currentShape.end.y - toolState.currentShape.start.y) * zoom,
-                                      border: `2px solid ${toolState.currentShape.color}`,
-                                      background: `${toolState.currentShape.color}20`,
-                                      pointerEvents: 'none'
-                                    }}
-                                  />
-                                )}
-                                {(toolState.currentShape.type === 'ellipse' || toolState.currentShape.type === 'ellipseStats') && (
-                                  <svg
-                                    style={{
-                                      position: 'absolute',
-                                      top: 0,
-                                      left: 0,
-                                      width: '100%',
-                                      height: '100%',
-                                      pointerEvents: 'none'
-                                    }}
-                                  >
-                                    {/* Ellipse outline */}
-                                    {(() => {
-                                      const centerX = (toolState.currentShape.start.x + toolState.currentShape.end.x) / 2
-                                      const centerY = (toolState.currentShape.start.y + toolState.currentShape.end.y) / 2
-                                      const radiusX = Math.abs(toolState.currentShape.end.x - toolState.currentShape.start.x) / 2
-                                      const radiusY = Math.abs(toolState.currentShape.end.y - toolState.currentShape.start.y) / 2
-                                      
-                                      const centerScreen = imageToScreenCoords(centerX, centerY)
-                                      const radiusXScreen = radiusX * zoom
-                                      const radiusYScreen = radiusY * zoom
-                                      
-                                      return (
-                                        <>
-                                    <ellipse
-                                            cx={centerScreen.x}
-                                            cy={centerScreen.y}
-                                            rx={radiusXScreen}
-                                            ry={radiusYScreen}
-                                      fill="none"
-                                      stroke={toolState.currentShape.color}
-                                      strokeWidth="2"
-                                      strokeDasharray="5,5"
-                                    />
-                                    
-                                    {/* Center point */}
-                                    <circle
-                                            cx={centerScreen.x}
-                                            cy={centerScreen.y}
-                                      r="3"
-                                      fill={toolState.currentShape.color}
-                                    />
-                                        </>
-                                      )
-                                    })()}
-                                  </svg>
-                                )}
-                                {toolState.currentShape.type === 'length' && (
-                                  <svg
-                                    style={{
-                                      position: 'absolute',
-                                      top: 0,
-                                      left: 0,
-                                      width: '100%',
-                                      height: '100%',
-                                      pointerEvents: 'none'
-                                    }}
-                                  >
-                                    {/* Measurement line */}
-                                    {(() => {
-                                      const s = imageToScreenCoords(toolState.currentShape.start.x, toolState.currentShape.start.y)
-                                      const e = imageToScreenCoords(toolState.currentShape.end.x, toolState.currentShape.end.y)
-                                      const mid = { x: (s.x + e.x) / 2, y: (s.y + e.y) / 2 }
-                                      return (
-                                        <>
-                                    <line
-                                            x1={s.x}
-                                            y1={s.y}
-                                            x2={e.x}
-                                            y2={e.y}
-                                      stroke={toolState.currentShape.color}
-                                      strokeWidth="2"
-                                      strokeDasharray="5,5"
-                                    />
-                                    {/* Start point */}
-                                          <circle cx={s.x} cy={s.y} r="4" fill={toolState.currentShape.color} />
-                                    {/* End point */}
-                                          <circle cx={e.x} cy={e.y} r="4" fill={toolState.currentShape.color} />
-                                    {/* Distance label */}
-                                    <text
-                                            x={mid.x}
-                                            y={mid.y - 10}
-                                      textAnchor="middle"
-                                      fill={toolState.currentShape.color}
-                                      fontSize="12"
-                                      fontWeight="bold"
-                                            style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}
-                                    >
-                                      {formatMeasurement(calculateDistance(toolState.currentShape.start, toolState.currentShape.end))}
-                                    </text>
-                                        </>
-                                      )
-                                    })()}
-                                  </svg>
-                                )}
-                                {toolState.currentShape.type === 'arrow' && (
-                                  <svg
-                                    style={{
-                                      position: 'absolute',
-                                      top: 0,
-                                      left: 0,
-                                      width: '100%',
-                                      height: '100%',
-                                      pointerEvents: 'none'
-                                    }}
-                                  >
-                                    <defs>
-                                      <marker
-                                        id="arrowhead"
-                                        markerWidth="10"
-                                        markerHeight="7"
-                                        refX="9"
-                                        refY="3.5"
-                                        orient="auto"
-                                      >
-                                        <polygon
-                                          points="0 0, 10 3.5, 0 7"
-                                          fill={toolState.currentShape.color}
-                                        />
-                                      </marker>
-                                    </defs>
-                                    <line
-                                      x1={toolState.currentShape.start.x}
-                                      y1={toolState.currentShape.start.y}
-                                      x2={toolState.currentShape.end.x}
-                                      y2={toolState.currentShape.end.y}
-                                      stroke={toolState.currentShape.color}
-                                      strokeWidth="2"
-                                      markerEnd="url(#arrowhead)"
-                                    />
-                                  </svg>
-                                )}
-                                {toolState.currentShape.type === 'polygon' && toolState.currentShape.points.length > 2 && (
-                                  <svg
-                                    style={{
-                                      position: 'absolute',
-                                      top: 0,
-                                      left: 0,
-                                      width: '100%',
-                                      height: '100%',
-                                      pointerEvents: 'none'
-                                    }}
-                                  >
-                                    <polygon
-                                      points={toolState.currentShape.points.map((p: any) => {
-                                        const s = imageToScreenCoords(p.x, p.y)
-                                        return `${s.x},${s.y}`
-                                      }).join(' ')}
-                                      fill={`${toolState.currentShape.color}20`}
-                                      stroke={toolState.currentShape.color}
-                                      strokeWidth="2"
-                                    />
-                                  </svg>
-                                )}
-                                {toolState.currentShape.type === 'lasso' && toolState.currentShape.points.length > 1 && (
-                                  <svg
-                                    style={{
-                                      position: 'absolute',
-                                      top: 0,
-                                      left: 0,
-                                      width: '100%',
-                                      height: '100%',
-                                      pointerEvents: 'none'
-                                    }}
-                                  >
-                                    <path
-                                      d={(() => {
-                                        const s0 = imageToScreenCoords(toolState.currentShape.points[0].x, toolState.currentShape.points[0].y)
-                                        const rest = toolState.currentShape.points.map((p: any) => {
-                                          const s = imageToScreenCoords(p.x, p.y)
-                                          return `L ${s.x} ${s.y}`
-                                        }).join(' ')
-                                        return `M ${s0.x} ${s0.y} ${rest}`
-                                      })()}
-                                      fill="none"
-                                      stroke={toolState.currentShape.color}
-                                      strokeWidth="2"
-                                    />
-                                  </svg>
-                                )}
-                              </>
-                            )}
-
-                            {/* Render current measurement being drawn */}
-                            {toolState.currentMeasurement && (
-                              <>
-                                {toolState.currentMeasurement.type === 'polyline' && toolState.currentMeasurement.points.length > 1 && (
-                                  <svg
-                                    style={{
-                                      position: 'absolute',
-                                      top: 0,
-                                      left: 0,
-                                      width: '100%',
-                                      height: '100%',
-                                      pointerEvents: 'none'
-                                    }}
-                                  >
-                                    {(() => {
-                                      const toScreen = (p: any) => imageToScreenCoords(p.x, p.y)
-                                      const first = toScreen(toolState.currentMeasurement.points[0])
-                                      const d = `M ${first.x} ${first.y} ` + toolState.currentMeasurement.points.map((p: any) => {
-                                        const s = toScreen(p)
-                                        return `L ${s.x} ${s.y}`
-                                      }).join(' ')
-                                      return (
-                                        <>
-                                          <path d={d} fill="none" stroke={toolState.currentMeasurement.color} strokeWidth="2" />
-                                          {toolState.currentMeasurement.points.map((point: any, index: number) => {
-                                            const s = toScreen(point)
-                                            return <circle key={index} cx={s.x} cy={s.y} r="3" fill={toolState.currentMeasurement.color} />
-                                          })}
-                                        </>
-                                      )
-                                    })()}
-                                  </svg>
-                                )}
-                              </>
-                            )}
-
-                            {/* Render existing brush paths */}
-                            {(drawingShapes || []).map(shape => {
-                              if (shape.type === 'brush' || shape.type === 'eraser') {
-                                return (
-                                  <svg
-                                    key={shape.id}
-                                    style={{
-                                      position: 'absolute',
-                                      top: 0,
-                                      left: 0,
-                                      width: '100%',
-                                      height: '100%',
-                                      pointerEvents: 'none'
-                                    }}
-                                  >
-                                    <path
-                                      d={`M ${shape.points[0].x} ${shape.points[0].y} ${shape.points.map((p: any) => `L ${p.x} ${p.y}`).join(' ')}`}
-                                      stroke={shape.color}
-                                      strokeWidth={shape.brushSize}
-                                      fill="none"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      opacity={shape.opacity}
-                                    />
-                                  </svg>
-                                )
-                              }
-                              return null
-                            })}
-
-                            {/* Render current brush path */}
-                            {toolState.currentPath.length > 1 && (
-                              <svg
-                                style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  width: '100%',
-                                  height: '100%',
-                                  pointerEvents: 'none'
-                                }}
-                              >
-                                <path
-                                  d={`M ${toolState.currentPath[0].x} ${toolState.currentPath[0].y} ${toolState.currentPath.map(p => `L ${p.x} ${p.y}`).join(' ')}`}
-                                  stroke={labels.find(l => l.id === activeLabel)?.color || '#ff0000'}
-                                  strokeWidth={brushSize}
-                                  fill="none"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            )}
-                    </div>
-                  )}
-                </div>
-              )
-            })()
-            ) : (
-              <div style={{
                 display: 'flex',
+                  flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
-                height: '100%',
-                color: '#8aa',
+                  background: '#1a1a1a',
+                  color: '#666',
                 fontSize: '16px',
                 textAlign: 'center',
-                padding: '40px'
+                  gap: '16px'
               }}>
-                <div>
-                  <FaEye size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
+                  <FaFileMedical size={48} />
                   <div>No images available for this scan</div>
-                  <div style={{ fontSize: '14px', marginTop: '8px', opacity: 0.7 }}>
-                    Upload images to view them here
-                  </div>
+                  <div style={{ fontSize: '12px', color: '#888' }}>
+                    Upload images using the &quot;Add&quot; button above
                 </div>
           </div>
             )}
-              </div>
             </ImageViewerArea>
-            
-            {/* Annotations Overlay - Disabled for now */}
-            {/* <ImageOverlay>
-              {Array.isArray(annotations) && annotations.map(annotation => (
-                <AnnotationBox
-                  key={annotation.id}
-                  $x={annotation.x}
-                  $y={annotation.y}
-                  $width={annotation.width}
-                  $height={annotation.height}
-                >
-                  <AnnotationText>{annotation.text}</AnnotationText>
-                </AnnotationBox>
-              ))}
-              
-              {Array.isArray(measurements) && measurements.map(measurement => (
-                <MeasurementLine
-                  key={measurement.id}
-                  $x1={measurement.x1}
-                  $y1={measurement.y1}
-                  $x2={measurement.x2}
-                  $y2={measurement.y2}
-                />
-              ))}
-            </ImageOverlay> */}
           </ViewerArea>
         </MainViewerArea>
 
-        {/* Right Sidebar - Analysis */}
-        <RightSidebar>
-          {/* AI Model Selection */}
-          <SidebarSection>
-            <SectionTitle>Selected AI model</SectionTitle>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-              <button style={{
-                background: '#0694fb',
-                border: 'none',
-                color: 'white',
-                padding: '6px 12px',
-                borderRadius: '4px',
-                fontSize: '12px',
-                cursor: 'pointer'
-              }}>
-                Add Model
-              </button>
-              <button style={{
-                background: 'transparent',
-                border: '1px solid #0694fb',
-                color: '#0694fb',
-                padding: '6px 12px',
-                borderRadius: '4px',
-                fontSize: '12px',
-                cursor: 'pointer'
-              }}>
-                Change Model
-              </button>
-            </div>
-            
-            {/* AI Models - In a real implementation, these would come from the database */}
-            <ModelCard>
-              <ModelHeader>
-                <ModelIcon>
-                  <FaBrain size={12} />
-                </ModelIcon>
-                <div>
-                  <ModelName>Brain Scan Segmentation</ModelName>
-                  <ModelId>Model id: {meta?.caseId || analysisId}</ModelId>
-            </div>
-              </ModelHeader>
-              <ModelTag $color="#0694fb">Brain Tumor</ModelTag>
-            </ModelCard>
-            
-            <ModelCard>
-              <ModelHeader>
-                <ModelIcon>
-                  <FaBrain size={12} />
-                </ModelIcon>
-                <div>
-                  <ModelName>Brain Tumor LLM</ModelName>
-                  <ModelId>Model id: {meta?.caseId || analysisId}</ModelId>
-    </div>
-              </ModelHeader>
-              <ModelTag $color="#00ff88">Brain Tumor</ModelTag>
-            </ModelCard>
+        {/* Right Sidebar - Analysis Results */}
+        <RightSidebar style={{ position: 'relative' }}>
+          {/* Loading overlay for analysis section */}
+          {isLoadingAnalysis && (
+            <LoadingOverlay>
+              <LoadingSpinner />
+              <LoadingText>
+                Loading analysis...
+              </LoadingText>
+              <LoadingProgress />
+            </LoadingOverlay>
+          )}
+          
+          {/* Analysis Status Header */}
+          <AnalysisContent $isLoading={isLoadingAnalysis}>
+            <SidebarSection>
+            <AnalysisHeader>
+              <AnalysisTitle>
+                <FaBrain size={16} style={{ marginRight: '8px', color: '#0694fb' }} />
+                AI Analysis Results
+              </AnalysisTitle>
+              <AnalysisSubtitle>
+                {meta?.scanType} • {meta?.patient} • {meta?.caseId}
+              </AnalysisSubtitle>
+            </AnalysisHeader>
           </SidebarSection>
 
-          {/* Properties & Labels Panel */}
+          {/* Analysis Status Indicator */}
           <SidebarSection>
-            <SectionTitle>Properties & Labels</SectionTitle>
-            
-            {/* Active Label */}
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', color: '#8aa', marginBottom: '8px' }}>Active Label</div>
-                                <StyledSelect
-                value={activeLabel}
-                onChange={(e) => setActiveLabel(e.target.value)}
-              >
-                {labels.map(label => (
-                  <option key={label.id} value={label.id}>{label.name}</option>
-                ))}
-                                </StyledSelect>
-            </div>
+            <StatusIndicator>
+              <StatusBadge $status={status}>
+                {status === 'processing' && <FaSpinner size={12} style={{ animation: 'spin 1s linear infinite', marginRight: '6px' }} />}
+                {status === 'completed' && <FaCheckCircle size={12} style={{ marginRight: '6px', color: '#4CAF50' }} />}
+                {status === 'failed' && <FaTimesCircle size={12} style={{ marginRight: '6px', color: '#f44336' }} />}
+                {status === 'pending' && <FaClock size={12} style={{ marginRight: '6px', color: '#ff9800' }} />}
+                {status?.charAt(0).toUpperCase() + status?.slice(1)}
+              </StatusBadge>
+              {status === 'processing' && (
+                <ProgressBar>
+                  <ProgressFill $progress={analysisProgress?.progress || 0} />
+                </ProgressBar>
+              )}
+              {status === 'processing' && (
+                <>
+                  <ProgressMeta>
+                    <div>{analysisProgress?.message || 'Analyzing...'}</div>
+                    <div>{Math.round(analysisProgress?.progress || 0)}%</div>
+                  </ProgressMeta>
+                  <StageChips>
+                    {['initializing','uploading','processing','generating_report','completed'].map(stage => (
+                      <StageChip key={stage} $active={analysisProgress?.stage === stage}>
+                        {stage.replace(/_/g,' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </StageChip>
+                    ))}
+                  </StageChips>
+                </>
+              )}
+            </StatusIndicator>
+          </SidebarSection>
 
-            {/* Label List */}
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', color: '#8aa', marginBottom: '8px' }}>Label Management</div>
-              {labels.map(label => (
-                <div key={label.id} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px',
-                  background: activeLabel === label.id ? 'rgba(6, 148, 251, 0.1)' : 'transparent',
-                  border: activeLabel === label.id ? '1px solid #0694fb' : '1px solid transparent',
-                  borderRadius: '4px',
-                  marginBottom: '4px',
-                  cursor: 'pointer'
-                }} onClick={() => setActiveLabel(label.id)}>
-                  <div style={{
-                    width: '16px',
-                    height: '16px',
-                    background: label.color,
-                    borderRadius: '2px',
-                    opacity: label.visible ? 1 : 0.3
-                  }} />
-                  <div style={{ flex: 1, fontSize: '12px' }}>
-                    <div style={{ color: 'white' }}>{label.name}</div>
-                    <div style={{ color: '#8aa', fontSize: '10px' }}>
-                      {label.voxelCount} voxels
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={label.opacity}
-                      onChange={(e) => {
-                        setLabels(prev => prev.map(l => 
-                          l.id === label.id ? { ...l, opacity: Number(e.target.value) } : l
-                        ))
-                      }}
-                      style={{ width: '40px' }}
-                      title="Opacity"
-                    />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setLabels(prev => prev.map(l => 
-                          l.id === label.id ? { ...l, visible: !l.visible } : l
-                        ))
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: label.visible ? '#0694fb' : '#8aa',
-                        cursor: 'pointer',
-                        padding: '2px'
-                      }}
-                      title={label.visible ? 'Hide' : 'Show'}
-                    >
-                      <FaEye size={10} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Add New Label */}
-            <div style={{ marginBottom: '16px' }}>
-              <button style={{
-                width: '100%',
-                background: 'transparent',
-                border: '1px dashed #0694fb',
-                color: '#0694fb',
-                padding: '8px',
-                borderRadius: '4px',
-                fontSize: '12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '4px'
+          {/* Clinical Summary (compact) */}
+          <SidebarSection>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <FindingsTitle>
+                <FaBrain size={14} style={{ marginRight: '8px', color: '#28a745' }} />
+                Clinical Summary
+              </FindingsTitle>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr',
+                gap: 8,
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 8,
+                padding: 12
               }}>
-                <FaPlusCircle size={10} />
-                Add New Label
-              </button>
-            </div>
-
-            {/* Statistics */}
-            <div style={{ marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', color: '#8aa', marginBottom: '8px' }}>Statistics</div>
-              <div style={{ fontSize: '11px', color: '#8aa', lineHeight: '1.4' }}>
-                <div>Total Voxels: {labels.reduce((sum, label) => sum + label.voxelCount, 0)}</div>
-                <div>Active Label: {activeLabel}</div>
-                <div>Overlay Opacity: {overlayOpacity}%</div>
-                <div>Brush Size: {brushSize}px</div>
+                {/* For CT↔MRI conversion services, show different fields */}
+                {(meta?.analysisType === 'ct_to_mri' || meta?.analysisType === 'mri_to_ct') ? (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, color: '#8aa', fontWeight: 600 }}>Conversion Status</div>
+                      <div style={{ fontSize: 13, color: 'white', fontWeight: 700 }}>
+                        {currentAnalysis?.detected_case || 'Completed'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, color: '#8aa', fontWeight: 600 }}>SSIM Score</div>
+                      <div style={{ fontSize: 13, color: 'white', fontWeight: 700 }}>
+                        {currentAnalysis?.ssim != null ? `${Number(currentAnalysis.ssim).toFixed(4)}` : '—'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, color: '#8aa', fontWeight: 600 }}>Quality Assessment</div>
+                      <div style={{ fontSize: 13, color: 'white', fontWeight: 700 }}>
+                        {currentAnalysis?.ssim != null ? 
+                          (Number(currentAnalysis.ssim) >= 0.9 ? 'Excellent' : 
+                           Number(currentAnalysis.ssim) >= 0.8 ? 'Good' : 
+                           Number(currentAnalysis.ssim) >= 0.7 ? 'Fair' : 'Poor') : '—'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, color: '#8aa', fontWeight: 600 }}>Analysis Type</div>
+                      <div style={{ fontSize: 13, color: 'white', fontWeight: 700 }}>
+                        {getAnalysisTypeDisplayName(meta?.analysisType || 'auto')}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, color: '#8aa', fontWeight: 600 }}>Primary Finding</div>
+                      <div style={{ fontSize: 13, color: 'white', fontWeight: 700 }}>
+                        {currentAnalysis?.detected_case || '—'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, color: '#8aa', fontWeight: 600 }}>Confidence</div>
+                      <div style={{ fontSize: 13, color: 'white', fontWeight: 700 }}>
+                        {currentAnalysis?.overall_confidence != null ? `${Number(currentAnalysis.overall_confidence).toFixed(1)}%` : '—'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, color: '#8aa', fontWeight: 600 }}>Analysis Type</div>
+                      <div style={{ fontSize: 13, color: 'white', fontWeight: 700 }}>
+                        {getAnalysisTypeDisplayName(meta?.analysisType || 'auto')}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </SidebarSection>
+
+          {/* Confidence Breakdown - individual classes and scores (moved before Medical Notes) */}
+          {/* Hide confidence breakdown for CT↔MRI conversion services */}
+          {extractConfidenceEntries.length > 0 && !(meta?.analysisType === 'ct_to_mri' || meta?.analysisType === 'mri_to_ct') && (
+            <SidebarSection>
+              <FindingsTitle>
+                <FaBrain size={14} style={{ marginRight: '8px', color: '#28a745' }} />
+                Confidence Breakdown
+              </FindingsTitle>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {extractConfidenceEntries.map(([key, value]) => {
+                  const isPredicted = normalized(key) === normalized(currentAnalysis?.detected_case || '') || key === extractConfidenceEntries[0][0]
+                  return (
+                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ fontSize: 12, color: isPredicted ? '#fff' : '#ccc', fontWeight: isPredicted ? 700 : 500, minWidth: 120 }}>
+                        {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        {isPredicted && (
+                          <span style={{
+                            marginLeft: 8,
+                            fontSize: 10,
+                            color: '#4CAF50',
+                            border: '1px solid rgba(76, 175, 80, 0.5)',
+                            padding: '2px 6px',
+                            borderRadius: 12
+                          }}>Predicted</span>
+                        )}
+                      </div>
+                      <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.1)', borderRadius: 4, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${value}%`, background: getConfidenceColor(value), borderRadius: 4, transition: 'width 0.3s ease' }} />
+                      </div>
+                      <div style={{ minWidth: 48, textAlign: 'right', fontSize: 12, fontWeight: isPredicted ? 700 : 600, color: getConfidenceColor(value) }}>
+                        {Number(value).toFixed(1)}%
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </SidebarSection>
+          )}
+
+          {/* Medical Notes (placed after Clinical Summary) */}
+          {medicalNotesText && (
+            <SidebarSection>
+              <ScanNotesSection>
+                <ScanNotesTitle>
+                  <FaComment size={14} style={{ marginRight: '8px', color: '#ff9800' }} />
+                  Medical Notes
+                </ScanNotesTitle>
+                <ScanNotesContent style={{ maxHeight: notesExpanded ? 'none' : 160, overflow: 'hidden' }}>
+                  {medicalNotesText}
+                </ScanNotesContent>
+                <ScanNotesFooter>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <ScanNotesLabel>Generated from analysis</ScanNotesLabel>
+                    <button
+                      onClick={() => setNotesExpanded(v => !v)}
+                      style={{
+                        background: 'transparent',
+                        color: '#8aa',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        padding: '4px 8px',
+                        borderRadius: 4,
+                        fontSize: 10,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {notesExpanded ? 'Show less' : 'Show more'}
+                    </button>
+                    {/* Only show View Output Image button for conversion analyses (not detection analyses) and only if analysis belongs to selected image */}
+                    {(meta?.analysisType === 'ct_to_mri' || meta?.analysisType === 'mri_to_ct') && 
+                     currentAnalysis && currentAnalysis.imageIndex === selected &&
+                     (currentAnalysis?.combined_image || 
+                      (meta?.analysisType === 'ct_to_mri' && currentAnalysis?.ct_to_mri) ||
+                      (meta?.analysisType === 'mri_to_ct' && currentAnalysis?.mri_to_ct)) && (
+                      <button
+                        onClick={() => setIsOutputModalOpen(true)}
+                        style={{
+                          background: '#0694fb',
+                          color: 'white',
+                          border: 'none',
+                          padding: '6px 10px',
+                          borderRadius: 4,
+                          fontSize: 10,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        View Output Image
+                      </button>
+                    )}
+                  </div>
+                </ScanNotesFooter>
+              </ScanNotesSection>
+            </SidebarSection>
+          )}
+
+
+          {/* Output Image Section for Conversion Analyses */}
+          {(meta?.analysisType === 'ct_to_mri' || meta?.analysisType === 'mri_to_ct') && (
+            <SidebarSection>
+              <FindingsTitle>
+                <FaEye size={14} style={{ marginRight: '8px', color: '#0694fb' }} />
+                Conversion Output
+              </FindingsTitle>
+              <div style={{
+                background: 'rgba(6, 148, 251, 0.05)',
+                border: '1px solid rgba(6, 148, 251, 0.2)',
+                borderRadius: 8,
+                padding: 12
+              }}>
+                <div style={{ fontSize: 12, color: '#8aa', marginBottom: 8 }}>
+                  {meta?.analysisType === 'ct_to_mri' ? 'CT to MRI converted image' : 'MRI to CT converted image'}
+                </div>
+                {currentAnalysis && currentAnalysis.imageIndex === selected && 
+                 (currentAnalysis?.ct_to_mri || currentAnalysis?.mri_to_ct || currentAnalysis?.combined_image || currentAnalysis?.converted_image ||
+                  currentAnalysis?.rawData?.ct_to_mri || currentAnalysis?.rawData?.mri_to_ct || currentAnalysis?.rawData?.combined_image || currentAnalysis?.rawData?.converted_image) ? (
+                  <button
+                    onClick={() => setIsOutputModalOpen(true)}
+                    style={{
+                      background: '#0694fb',
+                      color: 'white',
+                      border: 'none',
+                      padding: '8px 16px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    <FaEye size={12} />
+                    View Output Image
+                  </button>
+                ) : (
+                  <div style={{ fontSize: 12, color: '#ff9800', fontStyle: 'italic' }}>
+                    No output image available
+                  </div>
+                )}
+              </div>
+            </SidebarSection>
+          )}
+
+          {/* AI Test Analysis Section */}
           <SidebarSection>
-            <ScanDetails>
-              <ScanTitle>{meta?.scanType}</ScanTitle>
-              <ScanSubtitle>{meta?.patient} / {meta?.caseId}</ScanSubtitle>
-            </ScanDetails>
+            <AnalysisHeader>
+              <AnalysisTitle>
+                <FaCogs size={16} style={{ marginRight: '8px', color: '#0694fb' }} />
+                AI Analysis
+              </AnalysisTitle>
+              <AnalysisSubtitle>Run or re-run the selected analysis</AnalysisSubtitle>
+            </AnalysisHeader>
+            
+            <StatusIndicator>
+              <StatusBadge $status="completed" style={{ alignSelf: 'flex-start' }}>
+                <FaCheckCircle size={12} style={{ marginRight: '6px' }} />
+                {getAnalysisTypeDisplayName(meta?.analysisType || 'auto')}
+              </StatusBadge>
+              
+              {!isAnalysisRunning && !hasCompletedAnalysis() && (
+                <div style={{ marginTop: '12px' }}>
+                  <SidebarActionButton 
+                    $variant="primary" 
+                    onClick={handleStartAnalysis}
+                    disabled={!meta?.analysisType || isLoadingImage || isLoadingAnalysis}
+                    style={{ width: '100%' }}
+                  >
+                    <FaPlay size={12} />
+                    Start Analysis
+                  </SidebarActionButton>
+                </div>
+              )}
+
+              {/* Allow re-running a completed analysis */}
+              {!isAnalysisRunning && hasCompletedAnalysis() && (
+                <div style={{ marginTop: '12px' }}>
+                  <SidebarActionButton 
+                    $variant="primary" 
+                    onClick={handleRetryAnalysis}
+                    disabled={!meta?.analysisType || isLoadingImage || isLoadingAnalysis}
+                    style={{ width: '100%' }}
+                  >
+                    <FaCog size={12} />
+                    Re-run Analysis
+                  </SidebarActionButton>
+                </div>
+              )}
+            </StatusIndicator>
           </SidebarSection>
 
-          {/* Confidence Score */}
-          <SidebarSection>
-            <ConfidenceSection>
-              <ConfidenceLabel>Confidence Score</ConfidenceLabel>
-              <ConfidenceScore>{meta?.confidence?.toFixed(2)}%</ConfidenceScore>
-              <ConfidenceBreakdown>
-                <ConfidenceItem>
-                  <span>Benign</span>
-                  <span>{meta?.confidence?.toFixed(2)}%</span>
-                </ConfidenceItem>
-                <ConfidenceItem>
-                  <span>Malignant</span>
-                  <span>{meta?.confidence?.toFixed(2)}%</span>
-                </ConfidenceItem>
-                <ConfidenceItem>
-                  <span>Other</span>
-                  <span>{meta?.confidence?.toFixed(2)}%</span>
-                </ConfidenceItem>
-              </ConfidenceBreakdown>
-            </ConfidenceSection>
-          </SidebarSection>
+          
 
-          {/* Scan Results */}
-          <SidebarSection style={{ flex: 1 }}>
-            <ResultsButton>
-              Scan Results
-            </ResultsButton>
-            <ResultsText>
-              {meta?.findings}
-            </ResultsText>
-          </SidebarSection>
+          {/* Removed verbose sections for minimal, doctor-focused view */}
 
-          {/* Dataset Export Section */}
-          <SidebarSection>
-            <SectionTitle>Dataset Export</SectionTitle>
-            <div style={{ marginBottom: '12px' }}>
-              <button
-                onClick={() => setShowExportDialog(true)}
-                style={{
-                  width: '100%',
-                  background: 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)',
-                  border: 'none',
-                  color: 'white',
-                  padding: '12px 16px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(76, 175, 80, 0.3)'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-1px)'
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(76, 175, 80, 0.4)'
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)'
-                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(76, 175, 80, 0.3)'
-                }}
+          {/* Action Buttons - pulled up to reduce gap from re-run button */}
+          <SidebarSection style={{ marginTop: 12 }}>
+            <ActionButtons>
+              <SidebarActionButton 
+                $variant="primary" 
+                onClick={() => setIsExportModalOpen(true)}
+                disabled={!currentAnalysis || currentAnalysis.status !== 'completed' || isLoadingImage || isLoadingAnalysis}
               >
-                <FaFileExport size={16} />
-                Export Annotations
-              </button>
-            </div>
-            <div style={{ fontSize: '12px', color: '#888', lineHeight: '1.4' }}>
-              Export annotations in YOLO, COCO, or Pascal VOC formats for training AI models.
-            </div>
+                <FaFileExport size={14} />
+                Export Results
+              </SidebarActionButton>
+              <SidebarActionButton 
+                $variant="secondary" 
+                onClick={handlePrintReport}
+                disabled={!currentAnalysis || currentAnalysis.status !== 'completed' || isLoadingImage || isLoadingAnalysis}
+              >
+                <FaDownload size={14} />
+                Print Report
+              </SidebarActionButton>
+            </ActionButtons>
           </SidebarSection>
+          </AnalysisContent>
         </RightSidebar>
       </ContentArea>
-    </MainContainer>
-    
-    {/* ROI Validation Message */}
-    {showValidationMessage && (
-      <div
-        style={{
-          position: 'fixed',
-          top: '20px',
-          right: '20px',
-          background: 'linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%)',
-          color: 'white',
-          padding: '12px 20px',
-          borderRadius: '8px',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-          zIndex: 1000,
-          fontSize: '14px',
-          fontWeight: '500',
-          maxWidth: '300px',
-          animation: 'slideIn 0.3s ease-out'
-        }}
-      >
-        {validationMessage}
-      </div>
-    )}
-    
-    {/* Dataset Export Dialog */}
-    {showExportDialog && (
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10000,
-          backdropFilter: 'blur(8px)'
-        }}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            setShowExportDialog(false)
-          }
-        }}
-      >
+      {isOutputModalOpen && currentAnalysis && currentAnalysis.imageIndex === selected && 
+       (currentAnalysis?.combined_image || currentAnalysis?.rawData?.combined_image ||
+        currentAnalysis?.converted_image || currentAnalysis?.rawData?.converted_image ||
+        (meta?.analysisType === 'ct_to_mri' && (currentAnalysis?.ct_to_mri || currentAnalysis?.rawData?.ct_to_mri)) ||
+        (meta?.analysisType === 'mri_to_ct' && (currentAnalysis?.mri_to_ct || currentAnalysis?.rawData?.mri_to_ct))) && (
         <div
+          onClick={() => setIsOutputModalOpen(false)}
           style={{
-            background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
-            padding: '24px',
-            borderRadius: '16px',
-            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            minWidth: '400px',
-            maxWidth: '500px'
-          }}
-        >
-          <div style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.6)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '20px'
-          }}>
-            <h3 style={{
-              margin: 0,
-              color: 'white',
-              fontSize: '18px',
-              fontWeight: '600'
-            }}>
-              Export Annotations Dataset
-            </h3>
-            <button
-              onClick={() => setShowExportDialog(false)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#888',
-                fontSize: '20px',
-                cursor: 'pointer',
-                padding: '0',
-                width: '24px',
-                height: '24px'
-              }}
-            >
-              <FaTimes />
-            </button>
-          </div>
-          
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{
-              display: 'block',
-              color: 'white',
-              marginBottom: '8px',
-              fontSize: '14px',
-              fontWeight: '500'
-            }}>
-              Dataset Format
-            </label>
-            <select
-              value={exportFormat}
-              onChange={(e) => setExportFormat(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px',
-                background: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: '8px',
-                color: 'white',
-                fontSize: '14px'
-              }}
-            >
-              <option value="yolo">YOLO Format (.txt)</option>
-              <option value="coco">COCO Format (.json)</option>
-              <option value="pascal_voc">Pascal VOC Format (.xml)</option>
-            </select>
-            <div style={{
-              fontSize: '12px',
-              color: '#888',
-              marginTop: '6px',
-              lineHeight: '1.4'
-            }}>
-              {exportFormat === 'yolo' && 'Best for object detection training with normalized coordinates.'}
-              {exportFormat === 'coco' && 'Comprehensive format with metadata and categories.'}
-              {exportFormat === 'pascal_voc' && 'Industry standard XML format for detailed annotations.'}
-            </div>
-          </div>
-          
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{
+            justifyContent: 'center',
+            zIndex: 2000
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#1a1a1a',
+              border: '1px solid #2a2a2a',
+              borderRadius: 8,
+              padding: 20,
+              width: 'auto',
+              maxWidth: '95vw',
+              maxHeight: '95vh',
+              overflow: 'auto',
               display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              cursor: 'pointer',
-              color: 'white',
-              fontSize: '14px'
-            }}>
-              <input
-                type="checkbox"
-                checked={includeMeasurements}
-                onChange={(e) => setIncludeMeasurements(e.target.checked)}
-                style={{ transform: 'scale(1.2)' }}
-              />
-              Include Measurement Annotations
-            </label>
-            <div style={{
-              fontSize: '12px',
-              color: '#888',
-              marginTop: '6px',
-              marginLeft: '24px'
-            }}>
-              Include ruler measurements, angles, and statistical shapes in the dataset.
+              flexDirection: 'column',
+              alignItems: 'center'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'white' }}>Analysis Output Image</div>
+              <button
+                onClick={() => setIsOutputModalOpen(false)}
+                style={{
+                  background: 'transparent',
+                  color: '#8aa',
+                  border: '1px solid #2a2a2a',
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
             </div>
-          </div>
-          
-          <div style={{
-            display: 'flex',
-            gap: '12px',
-            justifyContent: 'flex-end'
-          }}>
-            <button
-              onClick={() => setShowExportDialog(false)}
-              style={{
-                background: 'transparent',
-                border: '1px solid #888',
-                color: '#888',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
+            <img
+              src={(() => {
+                // Get image URL (Supabase Storage URL or base64 data URL)
+                let imageUrl = '';
+                
+                if (meta?.analysisType === 'ct_to_mri') {
+                  imageUrl = currentAnalysis?.ct_to_mri || currentAnalysis?.rawData?.ct_to_mri || '';
+                } else if (meta?.analysisType === 'mri_to_ct') {
+                  // For MRI to CT conversion, use converted_image field
+                  imageUrl = currentAnalysis?.converted_image || currentAnalysis?.rawData?.converted_image || '';
+                } else {
+                  imageUrl = currentAnalysis?.combined_image || currentAnalysis?.rawData?.combined_image ||
+                             currentAnalysis?.converted_image || currentAnalysis?.rawData?.converted_image || '';
+                }
+                
+                // Debug: Log image URL for troubleshooting
+                if (!imageUrl) {
+                  console.log('⚠️ No image URL found for modal:', {
+                    analysisType: meta?.analysisType,
+                    hasCurrentAnalysis: !!currentAnalysis,
+                    hasRawData: !!currentAnalysis?.rawData
+                  });
+                }
+                
+                return imageUrl;
+              })()}
+              alt="Analysis output"
+              style={{ 
+                maxWidth: '90vw',
+                maxHeight: '75vh',
+                width: 'auto',
+                height: 'auto', 
+                borderRadius: 8, 
+                border: '2px solid #2a2a2a',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
               }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.borderColor = '#ccc'
-                e.currentTarget.style.color = '#ccc'
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.borderColor = '#888'
-                e.currentTarget.style.color = '#888'
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleExportAnnotations}
-              disabled={exporting}
-              style={{
-                background: exporting 
-                  ? '#666' 
-                  : 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)',
-                border: 'none',
-                color: 'white',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: '600',
-                cursor: exporting ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              {exporting ? <FaSpinner /> : <FaFileExport />}
-              {exporting ? 'Exporting...' : 'Export Dataset'}
-            </button>
+            />
           </div>
         </div>
-      </div>
-    )}
-    </>
+      )}
+
+      {/* Export Modal */}
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        scanId={analysisId || ''}
+        imageIndex={selected}
+        analysisData={exportData}
+      />
+    </MainContainer>
   )
 }
 

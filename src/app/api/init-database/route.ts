@@ -97,12 +97,14 @@ export async function POST(request: NextRequest) {
                 CREATE TABLE IF NOT EXISTS analyses (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     scan_id UUID NOT NULL REFERENCES scans(id) ON DELETE CASCADE,
+                    image_index INTEGER NOT NULL DEFAULT 0,
                     analysis_type TEXT DEFAULT 'ai_analysis',
                     status TEXT CHECK(status IN ('pending', 'processing', 'completed', 'failed')) DEFAULT 'pending',
                     confidence REAL,
                     result JSONB,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    UNIQUE(scan_id, image_index, analysis_type)
                 );
             `
         });

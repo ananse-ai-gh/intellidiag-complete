@@ -86,11 +86,6 @@ export const scansAPI = {
   },
   analyze: (scanId: string) => api.post(`/api/scans/${scanId}/analyze`),
   getAnalysisStatus: (scanId: string) => api.get(`/api/scans/${scanId}/analysis-status`),
-  getAnnotations: (id: string) => api.get(`/api/scans/${id}/annotations`),
-  saveAnnotations: (id: string, imageIndex: number, annotations: any) =>
-    api.post(`/api/scans/${id}/annotations`, { imageIndex, annotations }),
-  exportAnnotations: (id: string, format: string = 'yolo', includeMeasurements: boolean = false) =>
-    api.get(`/api/scans/${id}/annotations/export?format=${format}&includes_measurements=${includeMeasurements}`),
 };
 
 export const diagnosesAPI = {

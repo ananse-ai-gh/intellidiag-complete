@@ -30,6 +30,7 @@ interface Scan {
   aiFindings?: string;
   imagePath?: string;
   patientId: number;
+  analysisType?: string;
 }
 
 interface Patient {
@@ -47,6 +48,7 @@ interface ScanFormData {
   patientId: string;
   scanType: string;
   bodyPart: string;
+  analysisType?: string;
   priority: string;
   notes: string;
   scanDate: string;
@@ -420,6 +422,7 @@ export const CreateScanModal = ({
     patientId: '',
     scanType: '',
     bodyPart: '',
+    analysisType: 'auto',
     priority: 'medium',
     notes: '',
     scanDate: new Date().toISOString().split('T')[0],
@@ -466,6 +469,7 @@ export const CreateScanModal = ({
       formDataToSend.append('patientId', formData.patientId);
       formDataToSend.append('scanType', formData.scanType);
       formDataToSend.append('bodyPart', formData.bodyPart);
+      formDataToSend.append('analysisType', formData.analysisType || 'auto');
       formDataToSend.append('priority', formData.priority);
       formDataToSend.append('notes', formData.notes);
       formDataToSend.append('scanDate', formData.scanDate);
@@ -485,6 +489,7 @@ export const CreateScanModal = ({
         patientId: '',
         scanType: '',
         bodyPart: '',
+        analysisType: 'auto',
         priority: 'medium',
         notes: '',
         scanDate: new Date().toISOString().split('T')[0],
@@ -524,6 +529,21 @@ export const CreateScanModal = ({
                       {patient.firstName} {patient.lastName} - {patient.patientId}
                     </option>
                   ))}
+                </SelectField>
+              </FormGroup>
+              <FormGroup>
+                <Label>AI Analysis Service *</Label>
+                <SelectField
+                  value={formData.analysisType || 'auto'}
+                  onChange={(e) => handleInputChange('analysisType', e.target.value)}
+                  required
+                >
+                  <option value="auto">Auto-detect (Recommended)</option>
+                  <option value="brain_tumor">Brain Tumor Analysis</option>
+                  <option value="breast_cancer">Breast Cancer Detection</option>
+                  <option value="lung_tumor">Lung Tumor Analysis</option>
+                  <option value="ct_to_mri">CT to MRI Conversion</option>
+                  <option value="mri_to_ct">MRI to CT Conversion</option>
                 </SelectField>
               </FormGroup>
               <FormGroup>
@@ -807,6 +827,7 @@ export const EditScanModal = ({
         patientId: scan.patientId.toString(),
         scanType: scan.scanType,
         bodyPart: scan.bodyPart,
+        analysisType: scan.analysisType || 'auto',
         priority: scan.priority,
         notes: scan.notes || '',
         scanDate: scan.scanDate,
@@ -830,6 +851,7 @@ export const EditScanModal = ({
       const updateData = {
         scanType: formData.scanType,
         bodyPart: formData.bodyPart,
+        analysisType: formData.analysisType,
         priority: formData.priority,
         notes: formData.notes,
         scanDate: formData.scanDate
@@ -860,6 +882,21 @@ export const EditScanModal = ({
         <ModalContent>
           <form onSubmit={handleSubmit}>
             <FormGrid>
+              <FormGroup>
+                <Label>Analysis Type *</Label>
+                <SelectField
+                  value={formData.analysisType || 'auto'}
+                  onChange={(e) => handleInputChange('analysisType', e.target.value)}
+                  required
+                >
+                  <option value="auto">Auto-detect</option>
+                  <option value="brain_tumor">Brain Tumor Analysis</option>
+                  <option value="breast_cancer">Breast Cancer Detection</option>
+                  <option value="lung_tumor">Lung Tumor Analysis</option>
+                  <option value="ct_to_mri">CT to MRI Conversion</option>
+                  <option value="mri_to_ct">MRI to CT Conversion</option>
+                </SelectField>
+              </FormGroup>
               <FormGroup>
                 <Label>Scan Type *</Label>
                 <SelectField
