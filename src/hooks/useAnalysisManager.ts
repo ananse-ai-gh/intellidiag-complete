@@ -308,7 +308,7 @@ export const useAnalysisManager = (scanId: string, imageIndex: number = 0) => {
                 } : null
             }))
         }
-    }, [state.isRunning, scanId, simulateProgress])
+    }, [state.isRunning, scanId, simulateProgress, imageIndex])
 
     // Poll for analysis results
     const pollAnalysisResults = useCallback(async (analysisId: string) => {
@@ -382,7 +382,7 @@ export const useAnalysisManager = (scanId: string, imageIndex: number = 0) => {
         }
 
         await poll()
-    }, [scanId, state.currentAnalysis, saveToCache])
+    }, [scanId, state.currentAnalysis, saveToCache, imageIndex])
 
 
     // Cancel analysis
@@ -444,8 +444,9 @@ export const useAnalysisManager = (scanId: string, imageIndex: number = 0) => {
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort()
             }
-            if (progressIntervalRef.current) {
-                clearInterval(progressIntervalRef.current)
+            const progressInterval = progressIntervalRef.current
+            if (progressInterval) {
+                clearInterval(progressInterval)
             }
         }
     }, [])

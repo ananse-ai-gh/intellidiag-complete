@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useEffect, useMemo, useState, useRef } from 'react'
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import styled from 'styled-components'
 import { usePathname, useRouter } from 'next/navigation'
 import ImageViewer from '@/components/ImageViewer'
 import AnalysisResultsDisplay from '@/components/AnalysisResultsDisplay'
 import ExportModal from '@/components/ExportModal'
+import AnnotationCanvas from '@/components/AnnotationCanvas'
 import { useAnalysisManager } from '@/hooks/useAnalysisManager'
 import { generateAndPrintReport, AnalysisReportData } from '@/utils/pdfGenerator'
 import { 
@@ -1008,6 +1009,10 @@ const AnalysisDetail = () => {
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false)
   const [previousSelected, setPreviousSelected] = useState(0)
   const [isTransitioning, setIsTransitioning] = useState(false)
+  const [mode, setMode] = useState<'detection' | 'annotation'>('detection')
+  const [annoList, setAnnoList] = useState<any[]>([])
+  const [annoColor, setAnnoColor] = useState<string>('#0694fb')
+  const [annoPreset, setAnnoPreset] = useState<string>('Lesion')
 
   // Analysis management
   const {
@@ -1110,7 +1115,7 @@ const AnalysisDetail = () => {
         clearTimeout(timer)
       }
     }
-  }, [selected, files.length, files[selected]?.url, currentAnalysis?.imageIndex])
+  }, [selected, files.length, currentAnalysis, files])
 
   // Derive a stable status for UI badges
   const status = currentAnalysis?.status || (isAnalysisRunning ? 'processing' : (hasCompletedAnalysis() ? 'completed' : 'pending'))
@@ -1369,7 +1374,7 @@ const AnalysisDetail = () => {
   };
 
   // Handle smooth thumbnail click
-  const handleThumbnailClick = (imageIndex: number) => {
+  const handleThumbnailClick = useCallback((imageIndex: number) => {
     if (imageIndex === selected || isTransitioning) return
     
     console.log(`🖼️ Smooth thumbnail click: ${imageIndex}, previous: ${selected}`)
@@ -1389,7 +1394,7 @@ const AnalysisDetail = () => {
     setTimeout(() => {
       setIsTransitioning(false)
     }, 400) // Match the transition duration
-  }
+  }, [selected, isTransitioning])
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -1426,7 +1431,7 @@ const AnalysisDetail = () => {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selected, files.length, isTransitioning])
+  }, [selected, files.length, isTransitioning, handleThumbnailClick])
 
   // Handle image deletion
   const handleDeleteImage = async (imageIndex: number) => {
@@ -1681,6 +1686,39 @@ const AnalysisDetail = () => {
           {/* Viewer Area */}
           <ViewerArea>
             <ImageViewerArea data-image-viewer style={{ position: 'relative' }}>
+              {/* Mode Toggle */}
+              <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 20, display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => setMode('detection')}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: mode === 'detection' ? '#0694fb' : 'transparent',
+                    color: mode === 'detection' ? 'white' : '#8aa',
+                    border: mode === 'detection' ? '1px solid #0694fb' : '1px solid rgba(255,255,255,0.2)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Detection
+                </button>
+                <button
+                  onClick={() => setMode('annotation')}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: mode === 'annotation' ? '#0694fb' : 'transparent',
+                    color: mode === 'annotation' ? 'white' : '#8aa',
+                    border: mode === 'annotation' ? '1px solid #0694fb' : '1px solid rgba(255,255,255,0.2)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Annotation
+                </button>
+              </div>
               {/* Loading overlay for image viewer */}
               {isLoadingImage && (
                 <LoadingOverlay>
@@ -1694,6 +1732,22 @@ const AnalysisDetail = () => {
               
               {files.length > 0 ? (
                 (() => {
+                  // Annotation mode - render a single annotation canvas on the selected image
+                  if (mode === 'annotation') {
+                    const file = files[selected]
+                    return (
+                      <div style={{ width: '100%', height: '100%' }}>
+                        <AnnotationCanvas
+                          imageUrl={file?.url || '/placeholder-image.jpg'}
+                          readOnly={false}
+                          onAnnotationsChange={(annotations) => setAnnoList(Array.isArray(annotations) ? annotations : [])}
+                          selectedPreset={annoPreset}
+                          selectedColor={annoColor}
+                          pixelSpacing={0.1} // 0.1 mm per pixel for medical imaging
+                        />
+                      </div>
+                    )
+                  }
                   // Determine output image URL when analysis result is ready
                   // Only show output image if currentAnalysis belongs to the currently selected image
                   const outputImageUrl = (() => {
@@ -1795,32 +1849,306 @@ const AnalysisDetail = () => {
                   )
                 })()
               ) : (
-              <div style={{
-                  width: '100%',
-                  height: '100%',
-                display: 'flex',
-                  flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                  background: '#1a1a1a',
-                  color: '#666',
-                fontSize: '16px',
-                textAlign: 'center',
-                  gap: '16px'
-              }}>
-                  <FaFileMedical size={48} />
-                  <div>No images available for this scan</div>
-                  <div style={{ fontSize: '12px', color: '#888' }}>
-                    Upload images using the &quot;Add&quot; button above
-                </div>
-          </div>
-            )}
-            </ImageViewerArea>
+               <div style={{
+                   width: '100%',
+                   height: '100%',
+                 display: 'flex',
+                   flexDirection: 'column',
+                 alignItems: 'center',
+                 justifyContent: 'center',
+                   background: '#1a1a1a',
+                   color: '#666',
+                 fontSize: '16px',
+                 textAlign: 'center',
+                   gap: '16px'
+               }}>
+                   <FaFileMedical size={48} />
+                   <div>No images available for this scan</div>
+                   <div style={{ fontSize: '12px', color: '#888' }}>
+                     Upload images using the &quot;Add&quot; button above
+                 </div>
+           </div>
+               )}
+             </ImageViewerArea>
           </ViewerArea>
         </MainViewerArea>
 
         {/* Right Sidebar - Analysis Results */}
         <RightSidebar style={{ position: 'relative' }}>
+          {/* Annotation Controls - visible only in annotation mode */}
+          {mode === 'annotation' && (
+            <SidebarSection>
+              <AnalysisHeader>
+                <AnalysisTitle>
+                  <FaEdit size={16} style={{ marginRight: '8px', color: '#0694fb' }} />
+                  Annotation Mode
+                </AnalysisTitle>
+                <AnalysisSubtitle>
+                  {meta?.patient} • Image {selected + 1} of {Math.max(1, files.length)}
+                </AnalysisSubtitle>
+              </AnalysisHeader>
+
+              {/* Preset Labels */}
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: '#8aa', marginBottom: 6, fontWeight: 600 }}>Label Presets</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {['Lesion','Nodule','Mass','Edema','Calcification','Fracture'].map(lbl => (
+                    <button
+                      key={lbl}
+                      onClick={() => setAnnoPreset(lbl)}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 16,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        background: annoPreset === lbl ? 'rgba(6,148,251,0.18)' : 'transparent',
+                        color: annoPreset === lbl ? '#fff' : '#8aa',
+                        border: annoPreset === lbl ? '1px solid rgba(6,148,251,0.6)' : '1px solid rgba(255,255,255,0.15)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+                
+                {/* Custom Label Input */}
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 11, color: '#8aa', marginBottom: 4, fontWeight: 500 }}>Custom Label</div>
+                  <input
+                    type="text"
+                    value={annoPreset}
+                    onChange={(e) => setAnnoPreset(e.target.value)}
+                    placeholder="Enter custom label..."
+                    style={{
+                      width: '100%',
+                      padding: '6px 8px',
+                      borderRadius: 6,
+                      fontSize: 11,
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      color: '#fff',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Color Picker */}
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: '#8aa', marginBottom: 6, fontWeight: 600 }}>Annotation Color</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {['#0694fb','#4CAF50','#FFC107','#F44336','#9C27B0','#00BCD4'].map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setAnnoColor(c)}
+                      title={c}
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: '50%',
+                        background: c,
+                        border: annoColor === c ? '2px solid #fff' : '2px solid rgba(255,255,255,0.2)',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                        cursor: 'pointer'
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              
+              {/* Export Options */}
+              {annoList?.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#0694fb', marginBottom: 8 }}>
+                    Export Annotations
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <SidebarActionButton 
+                      $variant="primary"
+                      onClick={() => {
+                        try {
+                          const data = {
+                            scanId: analysisId,
+                            imageIndex: selected,
+                            labelPreset: annoPreset,
+                            color: annoColor,
+                            annotations: annoList
+                          }
+                          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = `${analysisId || 'scan'}-image-${selected}-annotations.json`
+                          document.body.appendChild(a)
+                          a.click()
+                          URL.revokeObjectURL(url)
+                          a.remove()
+                        } catch (e) {
+                          console.error('Export failed', e)
+                          alert('Failed to export annotations')
+                        }
+                      }}
+                    >
+                      <FaFileExport size={12} />
+                      Export as JSON
+                    </SidebarActionButton>
+                    
+                    <SidebarActionButton 
+                      $variant="secondary"
+                      onClick={() => {
+                        try {
+                          // Create canvas and draw annotations
+                          const canvas = document.createElement('canvas')
+                          const ctx = canvas.getContext('2d')
+                          if (!ctx) return
+                          
+                          const img = new Image()
+                          img.crossOrigin = 'anonymous'
+                          img.onload = () => {
+                            canvas.width = img.width
+                            canvas.height = img.height
+                            ctx.drawImage(img, 0, 0)
+                            
+                            // Draw annotations
+                            annoList.forEach(annotation => {
+                              ctx.strokeStyle = annotation.color
+                              ctx.fillStyle = annotation.color
+                              ctx.lineWidth = 2
+                              
+                              if (annotation.type === 'rectangle') {
+                                ctx.strokeRect(annotation.coordinates.x, annotation.coordinates.y, 
+                                             annotation.coordinates.width, annotation.coordinates.height)
+                              } else if (annotation.type === 'circle') {
+                                ctx.beginPath()
+                                ctx.arc(annotation.coordinates.x, annotation.coordinates.y, 
+                                       annotation.coordinates.radius, 0, 2 * Math.PI)
+                                ctx.stroke()
+                              }
+                            })
+                            
+                            const dataURL = canvas.toDataURL('image/png')
+                            const a = document.createElement('a')
+                            a.href = dataURL
+                            a.download = `${analysisId || 'scan'}-image-${selected}-annotations.png`
+                            document.body.appendChild(a)
+                            a.click()
+                            document.body.removeChild(a)
+                          }
+                          img.src = files[selected]?.url || '/placeholder-image.jpg'
+                        } catch (e) {
+                          console.error('PNG export failed', e)
+                          alert('Failed to export as PNG')
+                        }
+                      }}
+                    >
+                      <FaDownload size={12} />
+                      Export as PNG
+                    </SidebarActionButton>
+                    
+                    <SidebarActionButton 
+                      $variant="secondary"
+                      onClick={() => {
+                        try {
+                          const img = files[selected]
+                          if (!img) return
+                          
+                          const width = 800 // Default width
+                          const height = 600 // Default height
+                          
+                          let svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+                            <image href="${img.url}" width="${width}" height="${height}"/>`
+                          
+                          annoList.forEach(annotation => {
+                            if (annotation.type === 'rectangle') {
+                              svgContent += `<rect x="${annotation.coordinates.x}" y="${annotation.coordinates.y}" 
+                                           width="${annotation.coordinates.width}" height="${annotation.coordinates.height}" 
+                                           stroke="${annotation.color}" fill="none" stroke-width="2"/>`
+                            } else if (annotation.type === 'circle') {
+                              svgContent += `<circle cx="${annotation.coordinates.x}" cy="${annotation.coordinates.y}" 
+                                           r="${annotation.coordinates.radius}" stroke="${annotation.color}" 
+                                           fill="none" stroke-width="2"/>`
+                            }
+                          })
+                          
+                          svgContent += '</svg>'
+                          
+                          const blob = new Blob([svgContent], { type: 'image/svg+xml' })
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = `${analysisId || 'scan'}-image-${selected}-annotations.svg`
+                          document.body.appendChild(a)
+                          a.click()
+                          document.body.removeChild(a)
+                          URL.revokeObjectURL(url)
+                        } catch (e) {
+                          console.error('SVG export failed', e)
+                          alert('Failed to export as SVG')
+                        }
+                      }}
+                    >
+                      <FaFileExport size={12} />
+                      Export as SVG
+                    </SidebarActionButton>
+                    
+                    <SidebarActionButton 
+                      $variant="secondary"
+                      onClick={() => {
+                        try {
+                          // For PDF, we'll export as PNG for now (full PDF implementation would need jsPDF)
+                          const canvas = document.createElement('canvas')
+                          const ctx = canvas.getContext('2d')
+                          if (!ctx) return
+                          
+                          const img = new Image()
+                          img.crossOrigin = 'anonymous'
+                          img.onload = () => {
+                            canvas.width = img.width
+                            canvas.height = img.height
+                            ctx.drawImage(img, 0, 0)
+                            
+                            // Draw annotations
+                            annoList.forEach(annotation => {
+                              ctx.strokeStyle = annotation.color
+                              ctx.fillStyle = annotation.color
+                              ctx.lineWidth = 2
+                              
+                              if (annotation.type === 'rectangle') {
+                                ctx.strokeRect(annotation.coordinates.x, annotation.coordinates.y, 
+                                             annotation.coordinates.width, annotation.coordinates.height)
+                              } else if (annotation.type === 'circle') {
+                                ctx.beginPath()
+                                ctx.arc(annotation.coordinates.x, annotation.coordinates.y, 
+                                       annotation.coordinates.radius, 0, 2 * Math.PI)
+                                ctx.stroke()
+                              }
+                            })
+                            
+                            const dataURL = canvas.toDataURL('image/png')
+                            const a = document.createElement('a')
+                            a.href = dataURL
+                            a.download = `${analysisId || 'scan'}-image-${selected}-annotations.pdf`
+                            document.body.appendChild(a)
+                            a.click()
+                            document.body.removeChild(a)
+                          }
+                          img.src = files[selected]?.url || '/placeholder-image.jpg'
+                        } catch (e) {
+                          console.error('PDF export failed', e)
+                          alert('Failed to export as PDF')
+                        }
+                      }}
+                    >
+                      <FaFileExport size={12} />
+                      Export as PDF
+                    </SidebarActionButton>
+                  </div>
+                </div>
+              )}
+
+            </SidebarSection>
+          )}
           {/* Loading overlay for analysis section */}
           {isLoadingAnalysis && (
             <LoadingOverlay>
@@ -1832,8 +2160,9 @@ const AnalysisDetail = () => {
             </LoadingOverlay>
           )}
           
-          {/* Analysis Status Header */}
-          <AnalysisContent $isLoading={isLoadingAnalysis}>
+          {/* Analysis Status Header - Only show in detection mode */}
+          {mode === 'detection' && (
+            <AnalysisContent $isLoading={isLoadingAnalysis}>
             <SidebarSection>
             <AnalysisHeader>
               <AnalysisTitle>
@@ -2167,6 +2496,7 @@ const AnalysisDetail = () => {
             </ActionButtons>
           </SidebarSection>
           </AnalysisContent>
+          )}
         </RightSidebar>
       </ContentArea>
       {isOutputModalOpen && currentAnalysis && currentAnalysis.imageIndex === selected && 
